@@ -1,0 +1,35 @@
+# Self-hosters: pick your own names for the Pages project below and the R2 buckets (the ones here belong to the original deployment).
+name = "feedback-hub"
+compatibility_date = "2025-10-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "public"
+
+# Limits: plain variables, read by lib/limits.ts (a missing or invalid value falls back to the default). Edit and redeploy to change.
+[vars]
+MAX_ATTACHMENTS = "4"
+MAX_IMAGE_BYTES = "5242880"
+MAX_TOTAL_BYTES = "15728640"
+MAX_THUMB_BYTES = "65536"
+MAX_TEXT = "4000"
+RATE_PER_DEVICE_HOUR = "20"
+RATE_PER_PROJECT_HOUR = "200"
+
+[[r2_buckets]]
+binding = "SHOTS"
+# Self-hosters: create your own bucket (`wrangler r2 bucket create <name>`) and put its name here.
+bucket_name = "feedback-hub-shots"
+
+# Preview deployments (branch "staging" -> staging.<project>.pages.dev) use the staging bucket; secrets differ per environment.
+[env.preview]
+[env.preview.vars]
+MAX_ATTACHMENTS = "4"
+MAX_IMAGE_BYTES = "5242880"
+MAX_TOTAL_BYTES = "15728640"
+MAX_THUMB_BYTES = "65536"
+MAX_TEXT = "4000"
+RATE_PER_DEVICE_HOUR = "20"
+RATE_PER_PROJECT_HOUR = "200"
+[[env.preview.r2_buckets]]
+binding = "SHOTS"
+# Self-hosters: your own staging bucket name.
+bucket_name = "feedback-hub-shots-staging"

@@ -1,0 +1,23 @@
+{
+  "name": "postbox",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/cli/tsconfig.json --noEmit && tsc -p packages/react-native/tsconfig.json --noEmit",
+    "build:cli": "tsc -p packages/cli/tsconfig.build.json",
+    "db:migrate": "node scripts/migrate.ts",
+    "dev": "wrangler pages dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251001.0",
+    "@electric-sql/pglite": "^0.3.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@dalathappyfarm/postbox-cli",
+  "version": "0.2.0",
+  "description": "Command line for Postbox: list, read and close the feedback that testers send.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "postbox": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DalatHappyFarm/postbox.git",
+    "directory": "packages/cli"
+  }
+}
