@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brief, firstLine, listQuery, matchesSearch, mergeItems, migrateToken, moreBadge, relativeTime, shortcutAction, statusStreams, STATUS_LABEL, stepIndex, tabStatus, TABS, thumbPath, unreadCounts } from "../public/lib.js";
+import { brief, cleanToken, firstLine, listQuery, matchesSearch, mergeItems, migrateToken, moreBadge, relativeTime, shortcutAction, statusStreams, STATUS_LABEL, stepIndex, tabStatus, TABS, thumbPath, unreadCounts } from "../public/lib.js";
 
 describe("dashboard helpers", () => {
   it("builds the list query and skips empty filters", () => {
@@ -87,5 +87,13 @@ describe("dashboard helpers", () => {
     expect(migrateToken(mem({ postbox_admin_token: "new", fh_admin_token: "old" }))).toBe("new");
     expect(migrateToken(mem({}))).toBe("");
     expect(migrateToken({ getItem() { throw new Error("blocked"); } })).toBe("");
+  });
+});
+
+describe("cleanToken", () => {
+  it("accepts the token as pasted from an env file or with quotes", () => {
+    const t = "a".repeat(64);
+    for (const raw of [t, ` ${t}\n`, `"${t}"`, `'${t}'`, `ADMIN_TOKEN="${t}"`, `FH_ADMIN_TOKEN_PRODUCTION = '${t}'`]) expect(cleanToken(raw)).toBe(t);
+    expect(cleanToken("")).toBe("");
   });
 });

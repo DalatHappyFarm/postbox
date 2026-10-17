@@ -1,4 +1,4 @@
-import { STATUSES, STATUS_LABEL, KINDS, KIND_LABEL, TABS, tabStatus, TOKEN_KEY, migrateToken, firstLine, matchesSearch, unreadCounts, shortcutAction, stepIndex,
+import { cleanToken, STATUSES, STATUS_LABEL, KINDS, KIND_LABEL, TABS, tabStatus, TOKEN_KEY, migrateToken, firstLine, matchesSearch, unreadCounts, shortcutAction, stepIndex,
   statusStreams, listQuery, relativeTime, brief, mergeItems, thumbPath, moreBadge } from "/lib.js";
 
 const $ = (id) => document.getElementById(id);
@@ -452,7 +452,7 @@ async function start() {
 
 $("login-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  token = $("token").value.trim();
+  token = cleanToken($("token").value);
   if (!token) return;
   store.set(token); $("login-error").hidden = true;
   start();

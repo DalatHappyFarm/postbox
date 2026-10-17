@@ -20,6 +20,14 @@ export const tabStatus = (key) => (TABS.find((t) => t.key === key) || TABS[0]).s
 export const TOKEN_KEY = "postbox_admin_token";
 export const OLD_TOKEN_KEY = "fh_admin_token";
 
+/** Tolerates what people paste: surrounding spaces and quotes, or a whole `NAME="token"` line from an env file. */
+export function cleanToken(raw) {
+  let t = String(raw ?? "").trim();
+  const eq = t.match(/^[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.*)$/);
+  if (eq) t = eq[1].trim();
+  return t.replace(/^(["'`])(.*)\1$/, "$2").trim();
+}
+
 /** Token from storage; a token under the old key is moved to the new key once. Never throws. */
 export function migrateToken(storage) {
   try {
