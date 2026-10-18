@@ -217,7 +217,7 @@ describe("migration 0002", () => {
       insert into projects (slug, name, public_key) values ('demo', 'Demo', 'pbk_${"a".repeat(20)}');
       insert into feedback (project_id, kind, text, screenshot_key) values
         (1, 'bug', 'with png', 'demo/1.png'), (1, 'bug', 'with jpg', 'demo/2.jpg'), (1, 'idea', 'none', null);`);
-    expect(await applyMigrations(mdb, real)).toEqual(["0002_attachments.sql"]);
+    expect(await applyMigrations(mdb, real)).toEqual(["0002_attachments.sql", "0003_triage.sql"]);
     expect((await db.query("select feedback_id::int as f, position, kind, r2_key, bytes, content_type from attachments order by feedback_id")).rows).toEqual([
       { f: 1, position: 0, kind: "screenshot", r2_key: "demo/1.png", bytes: null, content_type: "image/png" },
       { f: 2, position: 0, kind: "screenshot", r2_key: "demo/2.jpg", bytes: null, content_type: "image/jpeg" },

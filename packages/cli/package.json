@@ -1,6 +1,6 @@
 {
   "name": "@dalathappyfarm/postbox-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Command line for Postbox: list, read and close the feedback that testers send.",
   "license": "MIT",
   "type": "module",

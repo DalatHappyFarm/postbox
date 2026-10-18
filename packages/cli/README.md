@@ -1,6 +1,6 @@
 # @dalathappyfarm/postbox-cli
 
-Command line client for a self-hosted [Postbox](https://github.com/DalatHappyFarm/postbox): list letters, read one with its photos, and set its status.
+Command line client for a self-hosted [Postbox](https://github.com/DalatHappyFarm/postbox): work the queue of decided letters, read a brief with its photos, add a letter, and set a status.
 
 
 ```sh
@@ -15,10 +15,16 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 
 ```sh
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
-postbox list [--project slug] [--status s] [--kind k] [--json]
-postbox show 42 [--json]              # markdown brief; downloads every attachment to the temp dir and prints the paths
-postbox status 42 doing               # new | doing | done | wont_fix
+postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
+postbox claim 42 [--json]             # Ready -> In progress and prints the brief; fails if the letter is not Ready
+postbox brief 42 43 [--json]          # markdown brief per letter: decision, duplicates folded in, every photo downloaded to the temp dir
+postbox show 42 [--json]              # one brief; --json is the raw letter
+postbox list [--project slug] [--status new,ready] [--kind k] [--priority 0-3|none] [--label l] [--screen s] [--source app|web] [--q text] [--sort new|old|priority] [--json]
+postbox add --project my-app --text "..." [--kind bug] [--screen Home] [--photo a.png --photo b.jpg]   # add a letter from the terminal
+postbox status 42 doing               # new | ready | doing | done | wont_fix
 postbox note 42 "reproduced on iOS 19"
 postbox done 42 --note "fixed in build 78"
 ```
+
+`--json` shapes are documented in `docs/agent-guide.md` of the repository.
 

@@ -62,7 +62,19 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
   Check order: project key, rate limit, `Content-Length` (411 if missing, 413 if too large, body unread), counts and sizes, magic bytes, stripping, parallel R2 writes.
   Returns `{id}`.
 - Admin, header `Authorization: Bearer <ADMIN_TOKEN>`:
-  `GET /api/feedback?project=&status=&kind=&limit=&cursor=`, `GET /api/feedback/:id` (with `attachments`), `PATCH /api/feedback/:id` (`status`, `note`), `GET /api/feedback/:id/attachments/:position`, `GET /api/feedback/:id/thumb`, `GET /api/feedback/:id/screenshot` (alias of attachment 0), `GET /api/projects`, `POST /api/projects` (`slug`, `name`).
+  - `GET /api/feedback`: filters `project`, `status` (comma list, `new,ready`), `kind`, `screen`, `build`, `priority` (`0`-`3` or `none`), `label`, `source` (`app|web`), `q` (case-insensitive search in text and note); `sort` is `new` (default), `old` or `priority` (priority, then oldest); `limit` (max 200) and `cursor`.
+    The first page (no `cursor`) also carries `counts`: `{status: {new, ready, doing, done, wont_fix, duplicate}, screen: [{screen, n}]}` with the top 20 screens, computed for the same `project`, `kind` and `q` but not the other filters, in two grouped queries.
+  - `GET /api/feedback/:id`: the letter with `priority`, `labels`, `duplicate_of`, `source`, `attachments` and `duplicates` (`[{id, text, attachment_count}]`, the letters that point at this one).
+  - `PATCH /api/feedback/:id`: any of `status`, `note` (the decision for the agent), `priority` (0 urgent, 1 high, 2 normal, 3 low, `null` unset), `labels` (at most 8 of 1-32 characters `a-z0-9-`), `duplicate_of` (id in the same project; sets status `duplicate`; `null` clears it).
+    Leaving the `duplicate` status drops the pointer.
+  - `POST /api/feedback/bulk`: `{ids: [...], patch: {status?, priority?, labels_add?, labels_remove?}}`, at most 200 ids, one statement; all ids must exist or nothing changes (404).
+    Returns `{updated}`.
+  - `POST /api/feedback`: add a letter by hand (source `web`, no rate limit): multipart with `meta` (as for submit, plus `project` slug), `photo` files and an optional `thumb`; same limits, magic-byte and JPEG-metadata rules as submit.
+    Returns `{id}`.
+  - `GET /api/feedback/:id/attachments/:position`, `GET /api/feedback/:id/thumb`, `GET /api/feedback/:id/screenshot` (alias of attachment 0).
+  - `GET /api/projects` (with `counts` by status per project), `POST /api/projects` (`slug`, `name`).
+- Statuses: `new`, `ready` (decided, waiting for the agent), `doing`, `done`, `wont_fix`, `duplicate`.
+  Migration `0003_triage.sql` adds them; `pnpm db:migrate` applies it.
 
 ## Limits
 
@@ -119,12 +131,18 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 
 ```sh
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
-postbox list [--project slug] [--status s] [--kind k] [--json]
-postbox show 42 [--json]              # markdown brief; downloads every attachment to the temp dir and prints the paths
-postbox status 42 doing               # new | doing | done | wont_fix
+postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
+postbox claim 42 [--json]             # Ready -> In progress and prints the brief; fails if the letter is not Ready
+postbox brief 42 43 [--json]          # markdown brief per letter: decision, duplicates folded in, every photo downloaded to the temp dir
+postbox show 42 [--json]              # one brief; --json is the raw letter
+postbox list [--project slug] [--status new,ready] [--kind k] [--priority 0-3|none] [--label l] [--screen s] [--source app|web] [--q text] [--sort new|old|priority] [--json]
+postbox add --project my-app --text "..." [--kind bug] [--screen Home] [--photo a.png --photo b.jpg]   # add a letter from the terminal
+postbox status 42 doing               # new | ready | doing | done | wont_fix
 postbox note 42 "reproduced on iOS 19"
 postbox done 42 --note "fixed in build 78"
 ```
+
+`--json` shapes are documented in `docs/agent-guide.md`.
 
 ## Security model
 
