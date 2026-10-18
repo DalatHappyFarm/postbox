@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  CONSENT_KEY, DEFAULT_LIMITS, buildParts, cleanup, getDeviceId, getLimits, giveConsent, hasConsent, isShake, makeThumb, pick,
-  processImage, resetLimitsCache, resizeFor, send, sendTimeout, slotsLeft, type Img, type ImageDeps, type PickDeps, type Store,
+  CONSENT_KEY, DEFAULT_LIMITS, buildParts, cleanup, clampFab, fabX, getDeviceId, getLimits, giveConsent, hasConsent, initialFab, isDrag, isShake,
+  makeThumb, parseFab, pick, processImage, resetLimitsCache, resizeFor, send, sendTimeout, serializeFab, slotsLeft, snapFab, toInsets,
+  type Img, type ImageDeps, type PickDeps, type Store,
 } from "../src/core.js";
 
 const mem = (): Store & { m: Map<string, string> } => {
@@ -204,5 +205,62 @@ describe("send headers", () => {
     expect(headers["x-device-id"]).toBe("dev1");
     await send("https://x.dev", "k", [], 1000, f as unknown as typeof fetch);
     expect(headers["x-device-id"]).toBeUndefined();
+  });
+});
+
+describe("floating button position", () => {
+  // iPhone-like portrait window; touch box 44, gap 6, so y runs from 59 + 6 to 844 - 34 - 6 - 44.
+  const win = { width: 390, height: 844 };
+  const ins = toInsets({ top: 59, bottom: 34 });
+
+  it("docks to the right edge and rests at 62% of the window height", () => {
+    expect(initialFab(win, ins)).toEqual({ side: "right", y: 501 });
+    expect(fabX("right", win, ins)).toBe(340);
+    expect(fabX("left", win, ins)).toBe(6);
+    expect(initialFab({ width: 360, height: 800 }, toInsets())).toEqual({ side: "right", y: 474 });
+  });
+  it("honours buttonPosition, then the deprecated buttonBottom, and clamps both", () => {
+    expect(initialFab(win, ins, { buttonPosition: { side: "left", y: 300 }, buttonBottom: 96 })).toEqual({ side: "left", y: 300 });
+    expect(initialFab(win, ins, { buttonBottom: 96 })).toEqual({ side: "right", y: 704 });
+    expect(initialFab(win, ins, { buttonBottom: 0 })).toEqual({ side: "right", y: 760 });
+    expect(initialFab(win, ins, { buttonPosition: { side: "left", y: Number.NaN } })).toEqual({ side: "left", y: 501 });
+  });
+  it("clamps y inside the safe area and respects side insets", () => {
+    expect(clampFab({ side: "right", y: -50 }, win, ins)).toEqual({ side: "right", y: 65 });
+    expect(clampFab({ side: "left", y: 9999 }, win, ins)).toEqual({ side: "left", y: 760 });
+    expect(clampFab({ side: "left", y: 400.4 }, win, ins)).toEqual({ side: "left", y: 400 });
+    expect(clampFab({ side: "left", y: 50 }, { width: 100, height: 100 }, ins)).toEqual({ side: "left", y: 65 }); // window smaller than the insets
+    const land = { width: 844, height: 390 };
+    const side = toInsets({ left: 47, right: 47, bottom: 21 });
+    expect(fabX("left", land, side)).toBe(53);
+    expect(fabX("right", land, side)).toBe(747);
+    expect(clampFab({ side: "right", y: 999 }, land, side).y).toBe(319);
+  });
+  it("snaps to the nearest side from the release point; a tie goes right", () => {
+    expect(snapFab(100, 400, win, ins)).toEqual({ side: "left", y: 400 });
+    expect(snapFab(300, 400, win, ins)).toEqual({ side: "right", y: 400 });
+    expect(snapFab(172, 400, win, ins).side).toBe("left");
+    expect(snapFab(173, 400, win, ins).side).toBe("right");
+    expect(snapFab(-80, 5000, win, ins)).toEqual({ side: "left", y: 760 });
+    expect(snapFab(9999, -5, win, ins)).toEqual({ side: "right", y: 65 });
+  });
+  it("tells a tap from a drag by distance, not by axis", () => {
+    expect(isDrag(0, 0)).toBe(false);
+    expect(isDrag(0, 10)).toBe(false);
+    expect(isDrag(6, 6)).toBe(false);
+    expect(isDrag(0, -11)).toBe(true);
+    expect(isDrag(8, 8)).toBe(true);
+    expect(isDrag(3, 0, 2)).toBe(true);
+  });
+  it("round-trips a stored position and rejects anything else", () => {
+    expect(parseFab(serializeFab({ side: "left", y: 123 }))).toEqual({ side: "left", y: 123 });
+    for (const bad of [null, undefined, "", "x", "null", "[]", "{}", '{"side":"top","y":1}', '{"side":"left"}', '{"side":"left","y":"1"}', '{"side":"left","y":null}'])
+      expect(parseFab(bad)).toBeNull();
+    expect(parseFab('{"side":"right","y":-20,"extra":1}')).toEqual({ side: "right", y: -20 }); // clamped later, against the window
+  });
+  it("keeps a position that no longer fits when the window changes", () => {
+    const stored = parseFab('{"side":"right","y":900}');
+    expect(clampFab(stored!, win, ins).y).toBe(760);
+    expect(clampFab(stored!, { width: 844, height: 390 }, toInsets({ bottom: 21 })).y).toBe(319);
   });
 });

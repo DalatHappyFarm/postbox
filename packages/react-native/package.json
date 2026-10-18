@@ -1,6 +1,6 @@
 {
   "name": "@dalathappyfarm/postbox-react-native",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "In-app feedback with an automatic screenshot and attached photos for React Native and Expo apps. Sends to a Postbox server.",
   "license": "MIT",
   "type": "module",

@@ -54,13 +54,45 @@ const { open } = useFeedback();
 | `endpoint` | string | Postbox base URL, no trailing path |
 | `projectKey` | string | Public key, sent as `X-Project-Key` |
 | `getScreen` | `() => string` | Read when the sheet opens; sent as `screen` |
-| `showButton` | boolean | Small floating button, bottom-right; long press hides it for the session |
+| `showButton` | boolean | Round floating button for testers, see "Floating button" below |
+| `buttonPosition` | `{ side: "left" \| "right"; y: number }` | Where the button starts; `y` is points from the top of the window to the top of the 44 pt touch box |
+| `buttonBottom` | number | Deprecated, use `buttonPosition`; still honoured as the initial distance from the bottom edge, docked right |
+| `insets` | `{ top?, right?, bottom?, left? }` | Safe-area insets in points; keeps the button clear of the notch and home indicator |
 | `shake` | boolean | Opens the sheet on shake (accelerometer above 2.2 g, 2 s cooldown) |
 | `strings` | `Partial<Strings>` | Override any UI text (English defaults) |
 | `onError` | `(error: string) => void` | Capture or send failures, for logging |
 
 `useFeedback().open(kind?)` opens the sheet with `bug`, `idea` or `other` preselected.
 Keep `showButton` and `shake` off in store builds if you do not want testers' tools there.
+
+## Floating button
+
+The button is for testers, so it must never block the app under test.
+It is a round 44 pt touch target (a 40 pt circle with a chat-bubble icon, slightly translucent at rest, label "Send feedback" for screen readers).
+It starts docked to the right edge at about 62% of the window height, clear of top navigation and of primary buttons near the bottom.
+
+- Tap opens the sheet. A drag never does.
+- Drag it anywhere. On release it snaps to the nearest left or right edge and stays inside the safe area.
+- The position is kept for the session and stored with `expo-secure-store`, so it survives restarts. A stored position wins over `buttonPosition`.
+- Long press hides it for the session.
+
+Pass the safe-area insets so the button also keeps clear of the notch and the home indicator.
+Without `insets` the kit assumes typical system bars.
+
+```tsx
+import { initialWindowMetrics } from "react-native-safe-area-context";
+
+<FeedbackProvider showButton={isTestBuild} insets={initialWindowMetrics?.insets} buttonPosition={{ side: "left", y: 400 }} ... />
+```
+
+The icon is drawn with plain Views and the kit does not depend on `react-native-safe-area-context`; use it for `insets` only if your app already has it.
+
+### 0.3.1
+
+- The "Feedback" text pill is now a compact round button, docked at the right edge near 62% of the window height instead of bottom-right, where it covered apps' primary buttons.
+- It is draggable and remembers where the tester put it. New props: `buttonPosition`, `insets`.
+- `buttonBottom` is deprecated and now only sets the initial position.
+- The default `strings.button` is "Send feedback" (it is the accessibility label; there is no visible text).
 
 ## What is sent
 

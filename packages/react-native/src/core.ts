@@ -195,3 +195,59 @@ export function isShake(
 ): boolean {
   return Math.hypot(a.x, a.y, a.z) > threshold && now - lastShake >= cooldown;
 }
+
+// ---- floating button: position maths (points, window coordinates, y = top edge of the touch box) ----
+export type Side = "left" | "right";
+export type FabPos = { side: Side; y: number };
+export type Insets = { top: number; right: number; bottom: number; left: number };
+export type Size = { width: number; height: number };
+
+export const FAB_TOUCH = 44; // touch target
+export const FAB_VISIBLE = 40; // drawn circle, centred in the touch box
+export const FAB_GAP = 6; // between the touch box and the safe-area edge
+export const FAB_REST = 0.62; // default centre height, as a share of the window height
+export const DRAG_SLOP = 10; // movement below this is a tap, above it a drag
+export const FAB_KEY = "postbox.button-position.v1";
+
+const num = (v: unknown, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+export const toInsets = (i?: Partial<Insets> | null): Insets => ({ top: num(i?.top), right: num(i?.right), bottom: num(i?.bottom), left: num(i?.left) });
+
+/** Left edge of the touch box when docked to a side. */
+export const fabX = (side: Side, win: Size, i: Insets) => (side === "left" ? i.left + FAB_GAP : win.width - i.right - FAB_GAP - FAB_TOUCH);
+
+/** Keeps the touch box inside the safe area; a bad side or y falls back to right and the rest height. */
+export function clampFab(pos: { side?: unknown; y?: unknown }, win: Size, i: Insets): FabPos {
+  const lo = i.top + FAB_GAP;
+  const hi = Math.max(lo, win.height - i.bottom - FAB_GAP - FAB_TOUCH);
+  const y = num(pos.y, win.height * FAB_REST - FAB_TOUCH / 2);
+  return { side: pos.side === "left" ? "left" : "right", y: Math.min(hi, Math.max(lo, Math.round(y))) };
+}
+
+/** Start position. buttonPosition wins; buttonBottom (deprecated) is the old distance from the bottom edge. */
+export function initialFab(win: Size, i: Insets, o: { buttonPosition?: { side: Side; y: number }; buttonBottom?: number } = {}): FabPos {
+  if (o.buttonPosition) return clampFab(o.buttonPosition, win, i);
+  if (typeof o.buttonBottom === "number" && Number.isFinite(o.buttonBottom)) return clampFab({ side: "right", y: win.height - o.buttonBottom - FAB_TOUCH }, win, i);
+  return clampFab({ side: "right" }, win, i);
+}
+
+/** Release point (left and top of the touch box) to the nearest docked side, y clamped. */
+export function snapFab(x: number, y: number, win: Size, i: Insets): FabPos {
+  const left = Math.abs(x - fabX("left", win, i)) < Math.abs(x - fabX("right", win, i));
+  return clampFab({ side: left ? "left" : "right", y }, win, i);
+}
+
+/** Tap or drag: true once the finger moved more than the slop. */
+export const isDrag = (dx: number, dy: number, slop = DRAG_SLOP) => Math.hypot(dx, dy) > slop;
+
+/** Stored value back to a position; anything unexpected is null. */
+export function parseFab(raw: string | null | undefined): FabPos | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as { side?: unknown; y?: unknown } | null;
+    if (!v || typeof v !== "object" || (v.side !== "left" && v.side !== "right") || typeof v.y !== "number" || !Number.isFinite(v.y)) return null;
+    return { side: v.side, y: v.y };
+  } catch {
+    return null;
+  }
+}
+export const serializeFab = (p: FabPos) => JSON.stringify({ side: p.side, y: p.y });

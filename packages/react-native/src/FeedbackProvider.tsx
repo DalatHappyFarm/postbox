@@ -10,10 +10,11 @@ import {
   ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, Modal, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View, useColorScheme,
 } from "react-native";
 import { captureScreen } from "react-native-view-shot";
+import { FloatingButton } from "./FloatingButton.js";
 import {
   DEFAULT_LIMITS, buildParts, cleanup, getDeviceId, getLimits, giveConsent, hasConsent, isShake, makeThumb, pick, processImage, send,
   sendTimeout, slotsLeft,
-  type Context as Ctx, type ImageDeps, type Img, type Kind, type Limits, type PickDeps, type Store,
+  type Context as Ctx, type ImageDeps, type Img, type Insets, type Kind, type Limits, type PickDeps, type Store,
 } from "./core.js";
 
 export type Strings = {
@@ -25,7 +26,7 @@ export type Strings = {
 };
 
 const DEFAULTS: Strings = {
-  button: "Feedback", title: "Send feedback", include: "Include screenshot", placeholder: "What happened, or what would help?",
+  button: "Send feedback", title: "Send feedback", include: "Include screenshot", placeholder: "What happened, or what would help?",
   send: "Send", cancel: "Cancel", bug: "Bug", idea: "Idea", other: "Other", sent: "Thanks, sent", failed: "Could not send. Try again.",
   consent: "Your note, a screenshot of this screen and any photos you attach go to the team. Images are deleted after 90 days.", consentOk: "OK, continue",
   addPhoto: "Add photo", library: "Photo library", camera: "Camera", removePhoto: "Remove photo", screenshotPreview: "Screenshot preview",
@@ -63,10 +64,14 @@ export type FeedbackProviderProps = {
   projectKey: string;
   /** Name of the current screen, read when the sheet opens. */
   getScreen?: () => string;
-  /** Floating button, bottom-right; long press hides it for the session. */
+  /** Round floating button for testers: tap opens the sheet, drag moves it, long press hides it for the session. */
   showButton?: boolean;
-  /** Distance of the floating button from the bottom edge, to clear a tab bar (default 96). */
+  /** Where the button starts: a side and `y`, points from the top of the window to the top of the 44 pt touch box. A tester's last drag is stored and wins over this. */
+  buttonPosition?: { side: "left" | "right"; y: number };
+  /** @deprecated Use `buttonPosition`. Still honoured: the initial distance of the button from the bottom edge, docked right. */
   buttonBottom?: number;
+  /** Safe-area insets in points, for example `initialWindowMetrics?.insets` from react-native-safe-area-context. Without them the kit guesses the system bars. */
+  insets?: Partial<Insets>;
   /** Open the sheet on shake. */
   shake?: boolean;
   strings?: Partial<Strings>;
@@ -217,13 +222,12 @@ export function FeedbackProvider(p: FeedbackProviderProps) {
   return (
     <Ctx_.Provider value={value}>
       {p.children}
-      {p.showButton && !hidden && step === "closed" && (
-        <Pressable
-          accessibilityRole="button" accessibilityLabel={t.button} onPress={() => void open()} onLongPress={() => setHidden(true)}
-          style={[s.fab, { backgroundColor: c.fab, bottom: p.buttonBottom ?? 96 }]}
-        >
-          <Text style={[s.fabText, { color: c.fabText }]}>{t.button}</Text>
-        </Pressable>
+      {p.showButton && !hidden && (
+        <FloatingButton
+          visible={step === "closed"} label={t.button} colors={{ bg: c.fab, fg: c.fabText }} store={store}
+          insets={p.insets} buttonPosition={p.buttonPosition} buttonBottom={p.buttonBottom}
+          onPress={() => void open()} onHide={() => setHidden(true)}
+        />
       )}
       <Modal visible={step !== "closed"} transparent animationType="slide" onRequestClose={close}>
         <KeyboardAvoidingView style={s.scrim} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -310,8 +314,6 @@ const LIGHT = { bg: "#FFFFFF", text: "#111111", muted: "#777777", border: "#CCCC
 const DARK = { bg: "#1C1C1E", text: "#F2F2F7", muted: "#8E8E93", border: "#444448", fab: "#F2F2F7", fabText: "#111111" };
 
 const s = StyleSheet.create({
-  fab: { position: "absolute", right: 16, minHeight: 44, minWidth: 44, paddingHorizontal: 14, borderRadius: 22, alignItems: "center", justifyContent: "center", opacity: 0.85 },
-  fabText: { fontSize: 13, fontWeight: "600" },
   scrim: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   sheet: { padding: 16, paddingBottom: 32, borderTopLeftRadius: 16, borderTopRightRadius: 16, gap: 12 },
   title: { fontSize: 18, fontWeight: "700" },
