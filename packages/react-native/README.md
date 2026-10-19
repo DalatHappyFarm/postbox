@@ -75,6 +75,7 @@ It starts docked to the right edge at about 62% of the window height, clear of t
 - Drag it anywhere. On release it snaps to the nearest left or right edge and stays inside the safe area.
 - The position is kept for the session and stored with `expo-secure-store`, so it survives restarts. A stored position wins over `buttonPosition`.
 - Long press hides it for the session.
+- It steps aside while the keyboard is up, so it never covers a bar the app pins above the keyboard (a Done button, for example).
 
 Pass the safe-area insets so the button also keeps clear of the notch and the home indicator.
 Without `insets` the kit assumes typical system bars.
@@ -92,6 +93,7 @@ The icon is drawn with plain Views and the kit does not depend on `react-native-
 - The "Feedback" text pill is now a compact round button, docked at the right edge near 62% of the window height instead of bottom-right, where it covered apps' primary buttons.
 - It is draggable and remembers where the tester put it. New props: `buttonPosition`, `insets`.
 - `buttonBottom` is deprecated and now only sets the initial position.
+- It hides while the keyboard is up.
 - The default `strings.button` is "Send feedback" (it is the accessibility label; there is no visible text).
 
 ## What is sent

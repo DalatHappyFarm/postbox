@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, PanResponder, Platform, Pressable, StatusBar, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Animated, Keyboard, PanResponder, Platform, Pressable, StatusBar, StyleSheet, View, useWindowDimensions } from "react-native";
 import {
   FAB_KEY, FAB_TOUCH, FAB_VISIBLE, clampFab, fabX, initialFab, isDrag, parseFab, serializeFab, snapFab, toInsets,
   type FabPos, type Insets, type Store,
@@ -62,6 +62,18 @@ export function FloatingButton(p: FloatingButtonProps) {
     return () => { on = false; };
   }, []);
 
+  // The keyboard and the bar an app pins above it own the bottom of the screen while it is up: the button steps aside, so a
+  // tap meant for that bar (a Done button) never opens the sheet.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const ios = Platform.OS === "ios";
+    const subs = [
+      Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", () => setKeyboardUp(true)),
+      Keyboard.addListener(ios ? "keyboardWillHide" : "keyboardDidHide", () => setKeyboardUp(false)),
+    ];
+    return () => subs.forEach((sub) => sub.remove());
+  }, []);
+
   // Rotation, split view or new insets: stay inside the safe area.
   useEffect(() => { place(pos.current, false); }, [win.width, win.height, i.top, i.right, i.bottom, i.left]);
 
@@ -84,7 +96,7 @@ export function FloatingButton(p: FloatingButtonProps) {
     });
   }, []);
 
-  if (!p.visible || !ready) return null;
+  if (!p.visible || !ready || keyboardUp) return null;
   return (
     <Animated.View {...pan.panHandlers} onTouchStart={() => { moved.current = false; }} style={[s.box, { transform: xy.getTranslateTransform() }]}>
       <Pressable
