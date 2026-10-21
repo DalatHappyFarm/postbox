@@ -4,19 +4,8 @@
 
 *Every voice finds its way to you.*
 
-```text
- Tester's app        Your Postbox (Cloudflare Pages)     You and your agent
-
- +--------------+    +-------------------------+       +-------------+
- | React Native |    | API                     |<----->| Dashboard   |
- | kit          |--->|   letters -> Postgres   |       +-------------+
- +--------------+    |   photos  -> R2         |       +-------------+
-   public key        |                         |<----->| postbox CLI |
-                     +-------------------------+       +-------------+
-                                                 admin token
-
- Unread --you decide--> Ready --agent claims--> In progress --done--> Done
-```
+<!-- diagram source: docs/diagrams/architecture.json -->
+![Postbox: the React Native kit sends letters to your Postbox; you triage them in the dashboard and an agent claims and closes them with the CLI. A letter goes Unread, Ready, In progress, Done.](docs/diagrams/architecture.svg)
 
 Postbox is the place where letters arrive: a small, self-hosted inbox for the bug reports and ideas that testers send from your apps.
 Testers need no account; you read everything in one dashboard or hand an item to a coding agent with one CLI command.
