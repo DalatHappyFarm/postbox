@@ -1,0 +1,23 @@
+{
+  "title": "postbox CLI: you mark letters Ready in the dashboard; the CLI claims and closes them on your Postbox server. postbox claim moves a letter from Ready to In progress, postbox done moves it to Done.",
+  "sections": [
+    {
+      "label": "How it works",
+      "columns": [
+        [{"id": "dashboard", "title": "Dashboard", "sub": "you decide"}],
+        [{"id": "postbox", "title": "Postbox", "sub": "your server", "icon": "../../public/brand/mark.png", "hub": true}],
+        [{"id": "cli", "title": "postbox CLI", "sub": "you or your agent"}]
+      ],
+      "edges": [
+        {"from": "dashboard", "to": "postbox", "label": "marks Ready"},
+        {"from": "postbox", "to": "cli", "label": "claims, closes", "both": true}
+      ]
+    },
+    {
+      "label": "A letter's life",
+      "items": [{"label": "Ready", "tone": "green"}, {"label": "In progress", "tone": "amber"}, {"label": "Done", "tone": "grey"}],
+      "captions": ["postbox claim 42", "postbox done 42"],
+      "mono": true
+    }
+  ]
+}

@@ -3,13 +3,8 @@
 In-app feedback with an automatic screenshot and attached photos (library or camera) for React Native and Expo apps.
 It sends to a Postbox server (`POST {endpoint}/api/submit`).
 
-```text
- +-------------------+  POST /api/submit  +--------------+     +-----------+
- | Your app          |  note, screenshot, | Your Postbox |     | Dashboard |
- |  FeedbackProvider |------------------->| server       |---->| (you)     |
- |  shake or button  |  photos, key       +--------------+     +-----------+
- +-------------------+
-```
+<!-- diagram source: docs/diagrams/react-native.json -->
+![React Native kit: your app sends the note, a screenshot and photos to POST /api/submit on your Postbox; you read them in the dashboard.](https://raw.githubusercontent.com/DalatHappyFarm/postbox/main/docs/diagrams/react-native.svg)
 
 ## Install
 

@@ -2,16 +2,8 @@
 
 Command line client for a self-hosted [Postbox](https://github.com/DalatHappyFarm/postbox): work the queue of decided letters, read a brief with its photos, add a letter, and set a status.
 
-```text
- +-----------+  mark Ready  +--------------+  queue, claim  +-------------+
- | Dashboard |  + decision  | Your Postbox |  brief, done   | postbox CLI |
- | (you)     |------------->| server       |<-------------->| (you or a   |
- +-----------+              +--------------+   admin token  |  coding     |
-                                                            |  agent)     |
-                                                            +-------------+
-
- Ready --postbox claim--> In progress --postbox done --note "..."--> Done
-```
+<!-- diagram source: docs/diagrams/cli.json -->
+![postbox CLI: you mark letters Ready in the dashboard; the CLI claims and closes them on your Postbox server. postbox claim moves a letter from Ready to In progress, postbox done moves it to Done.](https://raw.githubusercontent.com/DalatHappyFarm/postbox/main/docs/diagrams/cli.svg)
 
 ```sh
 npm install -g @dalathappyfarm/postbox-cli

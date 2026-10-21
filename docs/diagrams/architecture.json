@@ -1,0 +1,27 @@
+{
+  "title": "Postbox: the React Native kit sends letters to your Postbox; you triage them in the dashboard and an agent claims and closes them with the CLI. A letter goes Unread, Ready, In progress, Done.",
+  "sections": [
+    {
+      "label": "How it works",
+      "columns": [
+        [{"id": "kit", "title": "Tester's app", "sub": "React Native kit"}],
+        [{"id": "postbox", "title": "Postbox", "sub": "API · Postgres · R2", "icon": "../../public/brand/mark.png", "hub": true}],
+        [{"id": "dashboard", "title": "Dashboard", "sub": "you, in the browser"},
+         {"id": "cli", "title": "CLI", "sub": "you or your agent"}]
+      ],
+      "edges": [
+        {"from": "kit", "to": "postbox", "label": "sends"},
+        {"from": "postbox", "to": "dashboard", "label": "triage", "both": true},
+        {"from": "postbox", "to": "cli", "label": "claims, closes", "both": true}
+      ]
+    },
+    {
+      "label": "A letter's life",
+      "items": [
+        {"label": "Unread", "tone": "blue"}, {"label": "Ready", "tone": "green"},
+        {"label": "In progress", "tone": "amber"}, {"label": "Done", "tone": "grey"}
+      ],
+      "captions": ["you decide", "agent claims", "agent closes"]
+    }
+  ]
+}

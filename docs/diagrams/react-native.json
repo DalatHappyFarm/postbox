@@ -1,0 +1,17 @@
+{
+  "title": "React Native kit: your app sends the note, a screenshot and photos to POST /api/submit on your Postbox; you read them in the dashboard.",
+  "sections": [
+    {
+      "label": "How it works",
+      "columns": [
+        [{"id": "app", "title": "Your app", "sub": "note, screenshot, photos"}],
+        [{"id": "postbox", "title": "Postbox", "sub": "POST /api/submit", "icon": "../../public/brand/mark.png", "hub": true}],
+        [{"id": "dashboard", "title": "Dashboard", "sub": "you read it"}]
+      ],
+      "edges": [
+        {"from": "app", "to": "postbox", "label": "sends"},
+        {"from": "postbox", "to": "dashboard"}
+      ]
+    }
+  ]
+}
