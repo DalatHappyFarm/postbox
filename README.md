@@ -4,6 +4,20 @@
 
 *Every voice finds its way to you.*
 
+```text
+ Tester's app        Your Postbox (Cloudflare Pages)     You and your agent
+
+ +--------------+    +-------------------------+       +-------------+
+ | React Native |    | API                     |<----->| Dashboard   |
+ | kit          |--->|   letters -> Postgres   |       +-------------+
+ +--------------+    |   photos  -> R2         |       +-------------+
+   public key        |                         |<----->| postbox CLI |
+                     +-------------------------+       +-------------+
+                                                 admin token
+
+ Unread --you decide--> Ready --agent claims--> In progress --done--> Done
+```
+
 Postbox is the place where letters arrive: a small, self-hosted inbox for the bug reports and ideas that testers send from your apps.
 Testers need no account; you read everything in one dashboard or hand an item to a coding agent with one CLI command.
 It runs on Cloudflare Pages Functions, Neon Postgres (or any Postgres) and Cloudflare R2, and fits in the free tiers for a small team.
@@ -122,6 +136,8 @@ Without `DATABASE_URL` every API route answers `500 {"error":"misconfigured"}`.
 See its README for setup.
 
 ## CLI
+
+`npm install -g @dalathappyfarm/postbox-cli`, or from this repository:
 
 ```sh
 pnpm build:cli
