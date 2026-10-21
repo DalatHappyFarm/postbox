@@ -1,0 +1,25 @@
+name: Idea
+description: Something Postbox could do better.
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Dashboard
+        - Server / API
+        - React Native kit
+        - CLI
+        - Something new
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The situation and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
