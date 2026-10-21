@@ -559,7 +559,8 @@ function showLetter() {
 
 function placeholder() {
   const d = el("div", "empty");
-  d.append(icon("mail"), el("strong", "", "Select a letter"), el("span", "", "Pick one from the list to read it, or start triage to go through the unread ones. Press ? for keyboard shortcuts."));
+  const mark = el("img", "mark"); mark.src = "/brand/mark.png"; mark.alt = "";
+  d.append(mark, el("strong", "", "Select a letter"), el("span", "", "Pick one from the list to read it, or start triage to go through the unread ones. Press ? for keyboard shortcuts."));
   return d;
 }
 

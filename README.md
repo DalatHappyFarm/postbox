@@ -1,4 +1,8 @@
+<img src="public/brand/mark.png" alt="" width="72">
+
 # Postbox
+
+*Every voice finds its way to you.*
 
 Postbox is the place where letters arrive: a small, self-hosted inbox for the bug reports and ideas that testers send from your apps.
 Testers need no account; you read everything in one dashboard or hand an item to a coding agent with one CLI command.
