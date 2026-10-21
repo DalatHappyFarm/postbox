@@ -2,6 +2,23 @@
 
 Command line client for a self-hosted [Postbox](https://github.com/DalatHappyFarm/postbox): work the queue of decided letters, read a brief with its photos, add a letter, and set a status.
 
+```text
+ +-----------+  mark Ready  +--------------+  queue, claim  +-------------+
+ | Dashboard |  + decision  | Your Postbox |  brief, done   | postbox CLI |
+ | (you)     |------------->| server       |<-------------->| (you or a   |
+ +-----------+              +--------------+   admin token  |  coding     |
+                                                            |  agent)     |
+                                                            +-------------+
+
+ Ready --postbox claim--> In progress --postbox done --note "..."--> Done
+```
+
+```sh
+npm install -g @dalathappyfarm/postbox-cli
+postbox login https://<your-project>.pages.dev <ADMIN_TOKEN>
+```
+
+From a clone of the repository instead:
 
 ```sh
 pnpm build:cli
