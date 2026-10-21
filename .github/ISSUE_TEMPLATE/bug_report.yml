@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in Postbox does not work the way the README says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Remove admin tokens, project keys, database URLs and testers' personal data from anything you paste. A security problem goes to the Security tab, never into an issue.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Dashboard
+        - Server / API
+        - React Native kit
+        - CLI
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the dashboard and start triage
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The kit or CLI version (`npm ls @dalathappyfarm/postbox-react-native`), or the commit your Postbox runs.
+      placeholder: kit 0.3.3, server at commit 9e67d9d
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: Chrome 141 on macOS 26, or iPhone 16 with Expo SDK 58
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
