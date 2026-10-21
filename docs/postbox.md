@@ -4,6 +4,14 @@ Decisions: Feedback Hub became **Postbox**, "the place where letters arrive"; it
 The brand is charcoal, paper, signal blue, tan wood and field green, with a Da Lat touch (pine hills, mist, a wooden farm mailbox whose blue flag rises when a letter arrives).
 Until the final logo exists the UI uses a placeholder inline SVG mailbox.
 
+Update 2026-10-21: the brand identity sheet replaced the placeholder; the tagline is "Every voice finds its way to you."
+The mark (`public/brand/mark.png`) and the hero (`public/brand/hero.jpg`) are the sheet's own raster art, cut out with the sheet's masks; `favicon.ico` and `apple-touch-icon.png` (the mark on charcoal) are made from the mark.
+The wordmark is the sheet's vector glyphs, inlined as the `#wordmark` symbol in `public/index.html` so it takes the theme's text color.
+Palette: charcoal `#1F1F21`, paper `#F8F8F8`, blue `#1868DB`, tan `#C8894A`, green `#5B7F24`, pine `#2E5E4E`, line `#E5E5E3` (the sheet prints `#E5E553`, a typo for the grey swatch it shows).
+Type: DM Sans for display text and Roboto Mono for labels and keys, both OFL and self-hosted in `public/fonts/` (latin only).
+UI and letter text stay in the system font, because DM Sans has no Vietnamese and letters, mailbox and screen names may be in any language.
+The React Native kit keeps its neutral colors on purpose: it lives inside someone else's app.
+
 ## 1. Names
 
 | Thing | Before | After |

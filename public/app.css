@@ -1,10 +1,13 @@
-/* Postbox dashboard. Tokens follow the DalatHappyFarm family (sheepdog): semantic colors, light and dark; pine is Postbox's own. */
-:root{color-scheme:light;--bg:#FFFFFF;--sunk:#F8F8F8;--raised:#FFFFFF;--hov:#F0F1F2;--tx:#292A2E;--t2:#505258;--mu:#62656D;--bd:#E5E5E3;--bdb:#7D818A;--fo:#1868DB;
+/* Postbox dashboard. Tokens follow the DalatHappyFarm family (sheepdog): semantic colors, light and dark; charcoal, paper, blue, field green and pine come from the Postbox brand sheet.
+   UI text stays in the system font so letters in any language (Vietnamese included) render in one face; DM Sans (display) and Roboto Mono (labels) are the brand faces, latin only. */
+@font-face{font-family:"DM Sans";src:url(/fonts/dm-sans-latin.woff2) format("woff2");font-weight:100 1000;font-display:swap}
+@font-face{font-family:"Roboto Mono";src:url(/fonts/roboto-mono-latin.woff2) format("woff2");font-weight:100 700;font-display:swap}
+:root{color-scheme:light;--bg:#FFFFFF;--sunk:#F8F8F8;--raised:#FFFFFF;--hov:#F0F1F2;--tx:#1F1F21;--t2:#505258;--mu:#62656D;--bd:#E5E5E3;--bdb:#7D818A;--fo:#1868DB;
 --br:#1868DB;--brh:#1558BC;--inv:#FFFFFF;--sel:#E9F2FE;--dnt:#AE2E24;
 --neu:#EBEBE9;--neutx:#292A2E;--neubd:#8C8F97;
---okbg:#D3F1A7;--oktx:#37471F;--okbd:#6A9A23;--wnbg:#FCE4A6;--wntx:#693200;--wnbd:#C8894A;--inbg:#CFE1FD;--intx:#123263;--inbd:#357DE8;
---dnbg:#FFD5D2;--dntx:#5D1F1A;--dnbd:#E2483D;--dsbg:#EED7FC;--dstx:#48245D;--dsbd:#AF59E1;--pine:#2E5E4E;--wood:#C8894A;--wood-d:#8A5A2B;--shadow:0 8px 24px #1E1F2133;--ov:#050C1FCC;
---mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+--okbg:#D3F1A7;--oktx:#37471F;--okbd:#5B7F24;--wnbg:#FCE4A6;--wntx:#693200;--wnbd:#C8894A;--inbg:#CFE1FD;--intx:#123263;--inbd:#357DE8;
+--dnbg:#FFD5D2;--dntx:#5D1F1A;--dnbd:#E2483D;--dsbg:#EED7FC;--dstx:#48245D;--dsbd:#AF59E1;--pine:#2E5E4E;--shadow:0 8px 24px #1E1F2133;--ov:#050C1FCC;
+--display:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mono:"Roboto Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
 :root[data-theme=dark]{color-scheme:dark;--bg:#1F1F21;--sunk:#18191A;--raised:#242528;--hov:#2B2C2F;--tx:#E4E5E8;--t2:#B6B8BC;--mu:#9FA2A8;--bd:#34363A;--bdb:#7E8188;--fo:#8FB8F6;
 --br:#669DF1;--brh:#8FB8F6;--inv:#1F1F21;--sel:#1C2B42;--dnt:#FD9891;
 --neu:#2F3033;--neutx:#CECFD2;--neubd:#7E8188;
@@ -30,10 +33,9 @@ svg{flex:none}
 kbd{font:11px/16px var(--mono);padding:0 5px;border:1px solid var(--bd);border-bottom-width:2px;border-radius:4px;color:var(--t2);background:var(--bg)}
 button.linklike{border:0;background:none;padding:0;min-height:0;color:var(--br);text-align:left;font-weight:500;text-decoration:underline}
 
-/* logo + wordmark */
-.logo{width:24px;height:24px}.logo.xl{width:56px;height:56px}
-.lg-hill{fill:var(--pine)}.lg-post,.lg-pole{fill:var(--wood-d)}.lg-box{fill:var(--wood)}.lg-door{fill:var(--wood-d);opacity:.55}.lg-flag{fill:#1868DB}
-.wordmark{font-weight:850;letter-spacing:-.02em;color:var(--tx);margin:0;font-size:18px;line-height:24px}
+/* mark + wordmark: the mark is the brand art, the wordmark the brand sheet's own glyphs (viewBox 336.53 x 78, baseline at 64) */
+.mark{display:block;height:30px;width:auto}
+.wordmark{display:block;height:17px;width:auto;aspect-ratio:336.53/78;color:var(--tx)}
 
 /* controls */
 button,select,input,textarea{background:var(--bg);border:1px solid var(--bdb);border-radius:6px}
@@ -58,10 +60,11 @@ textarea{width:100%;min-height:88px;padding:8px 10px;resize:vertical}
 
 /* sign in */
 #login{min-height:100dvh;display:grid;place-items:center;padding:24px 16px}
-#login-form{width:min(360px,100%);display:grid;gap:10px;justify-items:stretch;background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:32px 24px 24px}
-#login-form .logo{justify-self:center}
-#login-form h1{text-align:center;font-size:30px;line-height:36px}
-#login-form .tag{margin:-6px 0 12px;text-align:center;color:var(--pine);font-weight:600}
+#login-form{width:min(400px,100%);display:grid;gap:10px;justify-items:stretch;background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:0 24px 24px;overflow:hidden}
+#login-form .hero{display:block;width:calc(100% + 48px);max-width:none;height:auto;margin:0 -24px 14px;border-bottom:1px solid var(--bd)}
+#login-form h1{margin:0;justify-self:center}
+#login-form .wordmark{height:40px}
+#login-form .tag{margin:0 0 14px;text-align:center;font:600 16px/22px var(--display);color:var(--t2)}
 #login-form label{font-weight:600}
 #login-form input{min-height:40px}
 
@@ -69,7 +72,7 @@ textarea{width:100%;min-height:88px;padding:8px 10px;resize:vertical}
 #app{--chrome:48px;height:100dvh;display:flex;flex-direction:column}
 body.triage #app{--chrome:90px}
 .top{display:flex;align-items:center;gap:6px;height:48px;padding:0 16px;background:var(--bg);border-bottom:1px solid var(--bd);flex:none}
-.brand{display:flex;align-items:center;gap:8px;color:var(--tx);text-decoration:none;border-radius:6px;margin-right:8px}
+.brand{display:flex;align-items:center;gap:7px;color:var(--tx);text-decoration:none;border-radius:6px;margin-right:8px}
 .spacer{flex:1}
 .top button{min-height:34px}
 .tbar{display:flex;align-items:center;gap:12px;height:42px;padding:0 16px;background:var(--bg);border-bottom:1px solid var(--bd);flex:none}
@@ -83,7 +86,7 @@ body.triage #app{--chrome:90px}
 .shell{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);position:relative}
 .shell>*{min-height:0;min-width:0;overflow:auto}
 #rail{background:var(--sunk);border-right:1px solid var(--bd);padding:8px 8px 24px}
-.facet h2{margin:12px 8px 4px;font-size:11px;line-height:16px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);font-weight:650}
+.facet h2{margin:12px 8px 4px;font:500 11px/16px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--mu)}
 .facet ul{list-style:none;margin:0;padding:0}
 #rail button{width:100%;justify-content:flex-start;border-color:transparent;background:transparent;font-weight:500;min-height:30px;padding:0 8px;border-radius:6px;color:var(--tx)}
 #rail button:hover{background:var(--hov)}
@@ -127,7 +130,7 @@ body.triage .shell #detail{display:block}
 .chip svg{width:12px;height:12px}
 .msg{margin:0;padding:32px 16px;color:var(--mu);text-align:center}
 .msg:empty{display:none}
-.msg .big{display:block;color:var(--tx);font-weight:650;margin-bottom:4px;font-size:15px}
+.msg .big{display:block;color:var(--tx);font:650 16px/22px var(--display);margin-bottom:4px}
 .more{margin:12px;align-self:stretch;min-height:40px;flex:none}
 
 /* letter rows */
@@ -144,8 +147,8 @@ body.triage .shell #detail{display:block}
 #list a.first{color:inherit;text-decoration:none}
 #list .first{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 #list .when{flex:none;font-size:12px;color:var(--mu)}
-#list .r2{display:flex;gap:6px;align-items:center;margin-top:3px;min-width:0;overflow:hidden;flex-wrap:nowrap}
-#list .box{font-weight:600;font-size:12px;color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+#list .r2{display:flex;gap:6px;align-items:center;margin-top:3px;min-width:0;overflow:hidden;flex-wrap:wrap;height:20px}/* one line: what does not fit wraps out of sight whole, last first */
+#list .box{font-weight:600;font-size:12px;color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:55%;flex:0 1 auto}
 #list .kind{font-size:12px;color:var(--mu);flex:none}
 #list .r3{margin-top:2px;font-size:12px;color:var(--mu);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .thumbbox{position:relative;width:64px;height:64px}
@@ -185,7 +188,8 @@ body.triage .shell #detail{display:block}
 /* reading pane */
 .empty{height:100%;display:grid;place-content:center;justify-items:center;gap:8px;text-align:center;color:var(--mu);padding:24px;max-width:460px;margin:0 auto}
 .empty svg{width:40px;height:40px;opacity:.7}
-.empty strong{color:var(--tx);font-size:16px}
+.empty strong{color:var(--tx);font:650 18px/24px var(--display)}
+.empty .mark{height:88px;margin-bottom:8px}
 .empty.done svg{color:var(--okbd);opacity:1}
 .empty button{margin-top:8px}
 .letter{--pad:20px;padding:12px var(--pad) 40px;display:grid;gap:16px;max-width:1500px;margin:0 auto;grid-template-columns:minmax(0,1fr)}
@@ -275,11 +279,11 @@ dialog{border:1px solid var(--bd);border-radius:12px;background:var(--bg);color:
 dialog::backdrop{background:var(--ov)}
 .sheet{padding:20px 24px 20px;width:min(420px,100%)}
 .sheet.wide{width:min(600px,100%)}
-.sheet h2{margin:0 0 12px;font-size:16px}
+.sheet h2{margin:0 0 12px;font:650 18px/24px var(--display)}
 .keycols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 24px}
 .keylist{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0 0 12px;align-items:center;align-content:start}
 .keylist dt{white-space:nowrap}.keylist dd{margin:0;color:var(--t2)}
-.keylist .grp{grid-column:1/-1;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);font-weight:650;margin-top:4px}
+.keylist .grp{grid-column:1/-1;font:500 11px/16px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--mu);margin-top:4px}
 .keylist .grp+dd{display:none}
 .actions{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:16px}
 .fld{display:grid;gap:4px;font-weight:600;margin-bottom:12px;align-content:start}
@@ -289,7 +293,8 @@ dialog::backdrop{background:var(--ov)}
 .drop{display:flex;align-items:center;justify-content:center;gap:10px;min-height:84px;padding:12px;border:2px dashed var(--bdb);border-radius:10px;color:var(--t2);font-weight:400;cursor:pointer;text-align:center}
 .drop svg{width:22px;height:22px}
 .drop:hover,.drop.over{background:var(--sel);border-color:var(--br)}
-.previews{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0;padding:0}
+.previews{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 0;padding:0}
+.fld>p{margin:0}.previews:empty,.fld>p:empty{display:none}
 .previews li{position:relative;width:104px;height:104px;border-radius:8px;overflow:hidden;border:1px solid var(--bd);background:var(--sunk)}
 .previews img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
 .previews button{position:absolute;top:4px;right:4px;width:36px;height:36px;min-height:36px;padding:0;border-radius:16px;background:var(--bg);opacity:.95}
