@@ -159,30 +159,59 @@ describe("consent and device id", () => {
   });
 });
 
+// A fake XMLHttpRequest. React Native's real one reads {uri, name, type} file parts natively and sends Content-Length; the
+// global fetch of Expo SDK 53+ (expo/fetch) cannot serialise such a part and throws before any byte leaves the phone.
+function fakeXhr(outcome: { status?: number; error?: boolean; hang?: boolean }) {
+  const x = {
+    headers: {} as Record<string, string>, body: undefined as unknown, opened: undefined as [string, string] | undefined,
+    timeout: 0, status: 0,
+    onload: null as null | (() => void), onerror: null as null | (() => void), ontimeout: null as null | (() => void), onabort: null as null | (() => void),
+    open(m: string, u: string) { x.opened = [m, u]; },
+    setRequestHeader(k: string, v: string) { x.headers[k] = v; },
+    abort() { x.onabort?.(); },
+    send(body: unknown) {
+      x.body = body;
+      if (outcome.hang) return;
+      queueMicrotask(() => {
+        if (outcome.error) return x.onerror?.();
+        x.status = outcome.status ?? 201; x.onload?.();
+      });
+    },
+  };
+  return x;
+}
+
 describe("send", () => {
   const parts = [["meta", "{}"]] as Parameters<typeof send>[2];
   it("posts multipart to /api/submit with the key header and no content-type", async () => {
-    const f = vi.fn(async () => new Response("{}", { status: 200 }));
-    const r = await send("https://x.dev/", "k1", parts, 1000, f as unknown as typeof fetch);
+    const x = fakeXhr({ status: 201 });
+    const r = await send("https://x.dev/", "k1", parts, 1000, () => x as never);
     expect(r).toEqual({ ok: true });
-    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://x.dev/api/submit");
-    expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({ "x-project-key": "k1" });
-    expect(init.body).toBeInstanceOf(FormData);
-    expect((init.body as FormData).get("meta")).toBe("{}");
+    expect(x.opened).toEqual(["POST", "https://x.dev/api/submit"]);
+    expect(x.headers).toEqual({ "x-project-key": "k1" });
+    expect(x.body).toBeInstanceOf(FormData);
+    expect((x.body as FormData).get("meta")).toBe("{}");
+    expect(x.timeout).toBe(1000);
+  });
+  it("never goes through the global fetch (expo/fetch cannot send {uri} file parts)", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unsupported FormDataPart implementation"));
+    try {
+      expect(await send("https://x.dev", "k", parts, 1000, () => fakeXhr({ status: 201 }) as never)).toEqual({ ok: true });
+      expect(spy).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
   });
   it("fails on http error", async () => {
-    const f = async () => new Response("{}", { status: 429 });
-    expect(await send("https://x.dev", "k", parts, 1000, f as unknown as typeof fetch)).toEqual({ ok: false, error: "http 429" });
+    expect(await send("https://x.dev", "k", parts, 1000, () => fakeXhr({ status: 429 }) as never)).toEqual({ ok: false, error: "http 429" });
   });
   it("fails on network error", async () => {
-    const f = async () => { throw new Error("offline"); };
-    expect(await send("https://x.dev", "k", parts, 1000, f as unknown as typeof fetch)).toEqual({ ok: false, error: "offline" });
+    expect(await send("https://x.dev", "k", parts, 1000, () => fakeXhr({ error: true }) as never)).toEqual({ ok: false, error: "network" });
   });
   it("times out", async () => {
-    const f = (_u: string, init: RequestInit) => new Promise<Response>((_, rej) => init.signal!.addEventListener("abort", () => rej(new Error("aborted"))));
-    expect(await send("https://x.dev", "k", parts, 10, f as unknown as typeof fetch)).toEqual({ ok: false, error: "timeout" });
+    const x = fakeXhr({ hang: true });
+    const p = send("https://x.dev", "k", parts, 10, () => x as never);
+    await Promise.resolve();
+    x.ontimeout?.();
+    expect(await p).toEqual({ ok: false, error: "timeout" });
   });
 });
 
@@ -199,12 +228,12 @@ describe("isShake", () => {
 
 describe("send headers", () => {
   it("sends X-Device-Id when a device id is known", async () => {
-    let headers: Record<string, string> = {};
-    const f = async (_u: string, init: RequestInit) => { headers = init.headers as Record<string, string>; return new Response("{}", { status: 201 }); };
-    await send("https://x.dev", "k", [], 1000, f as unknown as typeof fetch, "dev1");
-    expect(headers["x-device-id"]).toBe("dev1");
-    await send("https://x.dev", "k", [], 1000, f as unknown as typeof fetch);
-    expect(headers["x-device-id"]).toBeUndefined();
+    const x = fakeXhr({ status: 201 });
+    await send("https://x.dev", "k", [], 1000, () => x as never, "dev1");
+    expect(x.headers["x-device-id"]).toBe("dev1");
+    const y = fakeXhr({ status: 201 });
+    await send("https://x.dev", "k", [], 1000, () => y as never);
+    expect(y.headers["x-device-id"]).toBeUndefined();
   });
 });
 
