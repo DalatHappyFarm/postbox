@@ -209,7 +209,7 @@ export function FeedbackProvider(p: FeedbackProviderProps) {
     if (bytes > limits.max_total_bytes) { // do not upload what the server will refuse
       setBusy(false); setNote(t.tooLarge); if (thumb) dropFiles([thumb.uri]); return;
     }
-    const r = await send(p.endpoint, p.projectKey, parts, sendTimeout(bytes), fetch, deviceId);
+    const r = await send(p.endpoint, p.projectKey, parts, sendTimeout(bytes), undefined, deviceId);
     setBusy(false);
     if (r.ok) { clearAll(); setStep("sent"); setText(""); setTimeout(close, 1500); return; }
     if (thumb) dropFiles([thumb.uri]);

@@ -139,31 +139,54 @@ export const sendTimeout = (bytes: number) => Math.min(90_000, SEND_TIMEOUT_MS +
 
 export type SendResult = { ok: true } | { ok: false; error: string };
 
-export async function send(
+/** The slice of XMLHttpRequest that send() uses (tests pass a fake). */
+export type Xhr = {
+  open(method: string, url: string): void;
+  setRequestHeader(name: string, value: string): void;
+  send(body: unknown): void;
+  abort(): void;
+  timeout: number;
+  status: number;
+  onload: null | (() => void);
+  onerror: null | (() => void);
+  ontimeout: null | (() => void);
+  onabort: null | (() => void);
+};
+
+/**
+ * Multipart upload with XMLHttpRequest, not fetch: React Native's XHR reads {uri, name, type} file parts natively and sends
+ * Content-Length, while the global fetch of Expo SDK 53+ (expo/fetch) cannot serialise such a part and rejects before any byte is sent.
+ */
+export function send(
   endpoint: string,
   projectKey: string,
   parts: Part[],
   timeoutMs = SEND_TIMEOUT_MS,
-  fetchImpl: typeof fetch = fetch,
+  newXhr: () => Xhr = () => new XMLHttpRequest() as unknown as Xhr,
   deviceId = "",
 ): Promise<SendResult> {
-  const form = new FormData();
-  // React Native's FormData reads {uri, name, type} file parts; the DOM typing does not know them.
-  for (const [k, v] of parts) form.append(k, v as unknown as string);
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  try {
-    // No content-type header: fetch adds the multipart boundary.
-    const res = await fetchImpl(`${endpoint.replace(/\/+$/, "")}/api/submit`, {
+  return new Promise((resolve) => {
+    let x: Xhr;
+    try {
+      const form = new FormData();
+      // React Native's FormData reads {uri, name, type} file parts; the DOM typing does not know them.
+      for (const [k, v] of parts) form.append(k, v as unknown as string);
+      x = newXhr();
+      x.open("POST", `${endpoint.replace(/\/+$/, "")}/api/submit`);
+      // No content-type header: the multipart boundary is added by the request.
+      x.setRequestHeader("x-project-key", projectKey);
       // X-Device-Id lets the server rate-limit per device before it reads the body.
-      method: "POST", headers: { "x-project-key": projectKey, ...(deviceId ? { "x-device-id": deviceId } : {}) }, body: form, signal: ctl.signal,
-    });
-    return res.ok ? { ok: true } : { ok: false, error: `http ${res.status}` };
-  } catch (e) {
-    return { ok: false, error: ctl.signal.aborted ? "timeout" : String((e as Error)?.message ?? e) };
-  } finally {
-    clearTimeout(timer);
-  }
+      if (deviceId) x.setRequestHeader("x-device-id", deviceId);
+      x.timeout = timeoutMs;
+      x.onload = () => resolve(x.status >= 200 && x.status < 300 ? { ok: true } : { ok: false, error: `http ${x.status}` });
+      x.onerror = () => resolve({ ok: false, error: "network" });
+      x.ontimeout = () => resolve({ ok: false, error: "timeout" });
+      x.onabort = () => resolve({ ok: false, error: "aborted" });
+      x.send(form);
+    } catch (e) {
+      resolve({ ok: false, error: String((e as Error)?.message ?? e) });
+    }
+  });
 }
 
 /** Deletes temp files the kit created; never throws. */
