@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appendItems, brief, briefMany, cleanToken, decodeHash, DEFAULT_STATE, encodeHash, firstLine, fitScale, groupByScreen, inView, knownLabels, labelError, listQuery, migrateToken, moreBadge, nextAfter, normalizeLabel,
-  progress, relativeTime, resizeDims, searchId, shortcutAction, stateQuery, STATUS_LABEL, STATUS_VIEWS, stepId, thumbPath, undoGroups, undoStack, viewCount, viewStatus, zoomAt, clampView } from "../public/lib.js";
+  progress, widgetSnippet, relativeTime, resizeDims, searchId, shortcutAction, stateQuery, STATUS_LABEL, STATUS_VIEWS, stepId, thumbPath, undoGroups, undoStack, viewCount, viewStatus, zoomAt, clampView } from "../public/lib.js";
 
 const item = { id: 7, project: "demo", kind: "bug", status: "new", text: "Crash on save", note: null, screen: "Home", app_version: "1.2", build: "34", platform: "ios", device: null, os: "18", url: "", created_at: "2026-10-16T10:00:00Z", attachment_count: 3, has_thumb: true, priority: null, labels: [] as string[] };
 
@@ -122,6 +122,9 @@ describe("dashboard helpers", () => {
   });
   it("writes one document for several letters, a single brief for one", () => {
     expect(briefMany([item])).toBe(brief(item));
+    expect(widgetSnippet("https://postbox.example", "pbk_1")).toBe('<script src="https://postbox.example/widget.js" data-key="pbk_1" async></script>');
+    expect(brief({ ...item, app_version: null, build: "e2e-1", platform: "web", locale: "vi-VN", url: "https://shop.vn/x", attachment_count: 0 }).split("\n").slice(6, 11))
+      .toEqual(["- build: e2e-1", "- platform: web", "- os: 18", "- locale: vi-VN", "- url: https://shop.vn/x"]);
     const two = briefMany([item, { ...item, id: 8, text: "Typo" }]);
     expect(two.startsWith("# Postbox brief: 2 letters\n\n# Feedback #7")).toBe(true);
     expect(two).toContain("Crash on save\n\n---\n\n# Feedback #8");

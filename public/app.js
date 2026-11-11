@@ -1,6 +1,6 @@
 import { cleanToken, STATUS_LABEL, STATUS_VIEWS, KINDS, KIND_LABEL, PLATFORMS, PRIORITIES, priorityLabel, SORTS, TOKEN_KEY, migrateToken, firstLine, shortcutAction,
   decodeHash, encodeHash, stateQuery, listQuery, viewStatus, viewCount, inView, DEFAULT_STATE, nextAfter, stepId, progress, undoStack, undoGroups, groupByScreen, knownLabels,
-  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, brief, briefMany, appendItems, thumbPath, moreBadge } from "/lib.js";
+  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -100,7 +100,6 @@ function neighbours(n) {
 }
 const pill = (status) => el("span", `pill ${status}`, STATUS_LABEL[status] || status);
 const prio = (n) => (n == null || n === 2 ? null : el("span", `prio p${n}`, priorityLabel(n)));
-const buildOf = (i) => [i.app_version, i.build && `(${i.build})`].filter(Boolean).join(" ");
 
 /* ---------- URL hash ---------- */
 
@@ -173,7 +172,7 @@ function renderRail() {
   }
   const labels = [...new Set([...(S.label ? [S.label] : []), ...knownLabels(items)])];
   if (labels.length) section("Label", labels.map((l) => row(l, null, S.label === l, () => setFilter({ label: S.label === l ? "" : l }))), "Labels found in the loaded letters");
-  section("Source", [["app", "From an app"], ["web", "Added by hand"]].map(([k, t]) => row(t, null, S.source === k, () => setFilter({ source: S.source === k ? "" : k }))));
+  section("Source", [["app", "From testers"], ["web", "Added by hand"]].map(([k, t]) => row(t, null, S.source === k, () => setFilter({ source: S.source === k ? "" : k }))));
   section("Kind", KINDS.map((k) => row(KIND_LABEL[k], null, S.kind === k, () => setFilter({ kind: S.kind === k ? "" : k }))));
   rail.replaceChildren(...frag);
   document.title = unreadAll ? `(${unreadAll}) Postbox` : "Postbox";
@@ -190,12 +189,13 @@ async function loadProjects() {
 
 /* ---------- list ---------- */
 
-function setMsg(title, body, retry) {
+function setMsg(title, body, retry, action) {
   const m = $("list-msg");
   m.replaceChildren();
   if (title) m.append(el("span", "big", title));
   if (body) m.append(document.createTextNode(body));
   if (retry) { const b = el("button", "", "Try again"); b.type = "button"; b.addEventListener("click", () => loadList()); m.append(el("br"), b); }
+  if (action) { const b = el("button", "", action.label); b.type = "button"; b.addEventListener("click", action.click); m.append(el("br"), b); }
 }
 
 function skeletons() {
@@ -238,6 +238,11 @@ function refreshCounts() {
 function emptyCopy() {
   const filtered = FILTER_KEYS.some((k) => k !== "sort" && S[k] !== DEFAULT_STATE[k]);
   if (S.q) return ["No letter matches this search.", "Try fewer words, or clear the search."];
+  const box = projects.find((p) => p.slug === S.project);
+  if (box && Object.values(box.counts || {}).every((n) => !n)) {
+    return ["No letters in this mailbox yet.", "On a website, paste the widget snippet into the page's <head>. In an app, use the React Native kit with this mailbox's key. You can also add a letter by hand with New letter.", false,
+      { label: "Copy website snippet", click: () => copyText(widgetSnippet(location.origin, box.public_key), "Snippet copied. Paste it into the <head> of the site.") }];
+  }
   if (filtered && S.status === "new" && !S.screen && !S.label) return ["All caught up.", "No unread letters here. New feedback lands in this mailbox, or add one with New letter."];
   if (filtered) return ["No letters match these filters.", "Remove a filter above to see more."];
   return ["No letters yet.", "When someone sends feedback it lands here. You can also add one by hand with New letter."];
@@ -258,7 +263,7 @@ function renderActive() {
   if (S.priority) add("priority", S.priority === "none" ? "No priority" : priorityLabel(Number(S.priority)));
   if (S.screen) add("screen", S.screen);
   if (S.label) add("label", `#${S.label}`);
-  if (S.source) add("source", S.source === "web" ? "By hand" : "From apps");
+  if (S.source) add("source", S.source === "web" ? "By hand" : "From testers");
   if (S.kind) add("kind", KIND_LABEL[S.kind]);
   if (S.build) add("build", `Build ${S.build}`);
   box.hidden = !chips.length;
@@ -307,7 +312,7 @@ function rowEl(i) {
   const p = prio(i.priority); if (p) r2.append(p);
   for (const l of (i.labels || []).slice(0, 3)) r2.append(el("span", "lbl", l));
   if ((i.labels || []).length > 3) r2.append(el("span", "lbl more", `+${i.labels.length - 3}`));
-  const meta = [i.screen, buildOf(i), i.platform].filter(Boolean).join(" · ");
+  const meta = [i.screen, buildLabel(i), i.platform].filter(Boolean).join(" · ");
   body.append(r1, r2, el("div", "r3", meta));
   li.append(body);
   li.addEventListener("click", (e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); openLetter(i.id, true); });
@@ -599,8 +604,14 @@ function paintLetter(fresh = false) {
   const text = el("div", "l-text-wrap");
   text.append(...textBlock(i));
   const dl = el("dl", "ctx");
-  const fields = [["Screen", i.screen], ["Build", buildOf(i)], ["Platform", i.platform], ["Device", i.device], ["OS", i.os], ["Locale", i.locale], ["URL", i.url], ["Created", new Date(i.created_at).toLocaleString()]];
-  for (const [k, v] of fields) if (v) dl.append(el("dt", "", k), el("dd", "", v));
+  const fields = [["Screen", i.screen], ["Build", buildLabel(i)], ["Platform", i.platform], ["Device", i.device], ["OS", i.os], ["Locale", i.locale], ["URL", i.url], ["Created", new Date(i.created_at).toLocaleString()]];
+  for (const [k, v] of fields) {
+    if (!v) continue;
+    const dd = el("dd");
+    if (k === "URL" && /^https?:\/\//i.test(v)) dd.append(Object.assign(el("a", "", v), { href: v, target: "_blank", rel: "noopener noreferrer" }));
+    else dd.textContent = v;
+    dl.append(el("dt", "", k), dd);
+  }
   text.append(dl);
   if (i.duplicates?.length) {
     const d = el("div", "dups"); d.append(el("strong", "", `${i.duplicates.length} duplicate${i.duplicates.length === 1 ? "" : "s"} folded in`));
@@ -909,7 +920,7 @@ function paintSide() {
   $("viewer").classList.toggle("no-side", !V.panel);
   $("v-info").setAttribute("aria-pressed", String(V.panel));
   const dl = el("dl", "ctx");
-  for (const [k, v] of [["Screen", i.screen], ["Build", buildOf(i)], ["Platform", i.platform], ["Device", i.device], ["OS", i.os], ["Status", STATUS_LABEL[i.status]], ["Priority", i.priority == null ? "" : priorityLabel(i.priority)]]) if (v) dl.append(el("dt", "", k), el("dd", "", v));
+  for (const [k, v] of [["Screen", i.screen], ["Build", buildLabel(i)], ["Platform", i.platform], ["Device", i.device], ["OS", i.os], ["Status", STATUS_LABEL[i.status]], ["Priority", i.priority == null ? "" : priorityLabel(i.priority)]]) if (v) dl.append(el("dt", "", k), el("dd", "", v));
   side.replaceChildren(el("h2", "", `#${i.id} · ${boxName(i.project)}`), ...textBlock(i), dl, ...(i.note ? [el("h3", "", "Decision for the agent"), el("p", "", i.note)] : []));
 }
 const rel = (e) => { const r = $("vstage").getBoundingClientRect(); return [e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2]; };
@@ -1113,6 +1124,7 @@ async function start() {
   const names = loadProjects().then(() => items.length && renderList()).catch((e) => { if (!(e instanceof AuthError)) toast(`Could not load the mailboxes (${why(e)}).`); });
   if (wantTriage) { tri = { total: 0, done: 0, pending: false }; }
   await Promise.all([names, loadList()]);
+  if (!items.length) renderList(); // the empty state can offer the snippet once the mailboxes are known
   if (wantTriage) startTriage(true);
   else if (S.letter) showLetter();
 }
