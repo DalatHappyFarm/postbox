@@ -35,7 +35,8 @@ const USAGE = `usage:
   postbox status <id> <new|ready|doing|done|wont_fix>
   postbox done <id> --note "..."
   postbox note <id> "..."
-  postbox project add <slug> <name>`;
+  postbox project add <slug> <name>                   prints the public key (pbk_...)
+  postbox project snippet <slug>                      the <script> tag that puts the feedback widget on a website`;
 
 function migrateConfig(d: Deps) {
   if (!d.legacyConfigPath || existsSync(d.configPath) || !existsSync(d.legacyConfigPath)) return;
@@ -93,7 +94,7 @@ function one(i: Omit<Item, "duplicates">, paths: string[], heading: string): str
   return [
     heading, "",
     ...row("mailbox", i.project), ...row("kind", i.kind), ...row("priority", prio(i.priority)), ...row("labels", i.labels?.join(", ")), ...row("status", i.status),
-    ...row("screen", i.screen), ...row("build", [i.app_version, i.build && `(${i.build})`].filter(Boolean).join(" ")),
+    ...row("screen", i.screen), ...row("build", i.app_version && i.build ? `${i.app_version} (${i.build})` : i.app_version || i.build),
     ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("locale", i.locale), ...row("url", i.url),
     ...row("source", i.source), ...row("created", i.created_at), ...paths.map((p, n) => `- image ${n + 1}: ${p}`),
     "", "## Text", "", i.text,
@@ -221,6 +222,12 @@ export async function run(argv: string[], d: Deps = realDeps()): Promise<void> {
   if (cmd === "note" && a && b) {
     await patch(d, a, { note: b });
     return d.out(`#${a} note saved`);
+  }
+  if (cmd === "project" && a === "snippet" && p[2]) {
+    const all = (await (await api(d, "/api/projects")).json()) as { slug: string; public_key: string }[];
+    const box = all.find((x) => x.slug === p[2]);
+    if (!box) throw new Error(`no mailbox "${p[2]}"; create it with postbox project add ${p[2]} "Name"`);
+    return d.out(`<script src="${config(d).url}/widget.js" data-key="${box.public_key}" async></script>`);
   }
   if (cmd === "project" && a === "add" && p[2] && p[3]) {
     const r = (await (await api(d, "/api/projects", { method: "POST", body: JSON.stringify({ slug: p[2], name: p[3] }) })).json()) as { public_key: string };

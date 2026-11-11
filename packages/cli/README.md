@@ -24,6 +24,7 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 
 ```sh
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
+postbox project snippet my-site       # the <script> tag that puts the web widget on a site
 postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
 postbox claim 42 [--json]             # Ready -> In progress and prints the brief; fails if the letter is not Ready
 postbox brief 42 43 [--json]          # markdown brief per letter: decision, duplicates folded in, every photo downloaded to the temp dir
