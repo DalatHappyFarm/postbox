@@ -83,6 +83,13 @@ describe("postbox", () => {
     const bad = harness(() => Response.json({ error: "unauthorized" }, { status: 401 }));
     await expect(run(["list"], bad.d)).rejects.toThrow("401 unauthorized");
   });
+  it("project snippet prints the widget tag for a mailbox, from the configured url without a trailing slash", async () => {
+    const h = harness(() => Response.json([{ slug: "app", public_key: "pbk_a" }, { slug: "shop-vn", public_key: "pbk_s" }]));
+    await run(["project", "snippet", "shop-vn"], h.d);
+    expect(h.out).toEqual(['<script src="https://hub.test/widget.js" data-key="pbk_s" async></script>']);
+    expect(h.calls[0].url).toBe("https://hub.test/api/projects");
+    await expect(run(["project", "snippet", "nope"], h.d)).rejects.toThrow('no mailbox "nope"');
+  });
 
   it("login writes the config with mode 600 and it is used later", async () => {
     const h = harness(() => Response.json({ items: [], next_cursor: null }));

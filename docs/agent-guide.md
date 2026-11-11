@@ -126,4 +126,4 @@ All timestamps are ISO 8601 strings; fields only ever get added, never renamed.
 
 **Add** (`add --json`): `{"id": 7}`.
 
-`status`, `done`, `note`, `project add` and `login` print one short line and have no JSON form.
+`status`, `done`, `note`, `project add`, `project snippet` and `login` print one short line and have no JSON form.

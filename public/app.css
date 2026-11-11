@@ -131,6 +131,7 @@ body.triage .shell #detail{display:block}
 .msg{margin:0;padding:32px 16px;color:var(--mu);text-align:center}
 .msg:empty{display:none}
 .msg .big{display:block;color:var(--tx);font:650 16px/22px var(--display);margin-bottom:4px}
+.msg button{margin-top:12px}
 .more{margin:12px;align-self:stretch;min-height:40px;flex:none}
 
 /* letter rows */
@@ -217,6 +218,7 @@ body.triage .shell #detail{display:block}
 .ctx dt,.ctx dd{margin:0;padding:5px 12px;border-bottom:1px solid var(--bd)}
 .ctx dt{color:var(--mu);background:var(--sunk)}
 .ctx dd{overflow-wrap:anywhere}
+.ctx dd a{color:var(--br)}
 .ctx dt:nth-last-of-type(1),.ctx dd:last-of-type{border-bottom:0}
 .dups,.dupof{margin:12px 0 0;font-size:13px}.dups ul{margin:4px 0 0;padding-left:18px}
 @container (min-width:720px){

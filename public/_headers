@@ -11,3 +11,10 @@
   Cache-Control: no-cache
 /*.css
   Cache-Control: no-cache
+# The web widget is loaded by other sites: module imports need CORS, and pages with COEP need CORP.
+/widget.js
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin
+/widget/*
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin

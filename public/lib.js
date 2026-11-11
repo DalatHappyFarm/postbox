@@ -218,6 +218,12 @@ export function zoomAt(v, factor, cx, cy, min, max = 8) {
   return { s, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
 }
 
+/** The tag a website pastes into its <head> to show the feedback widget (served by this Postbox). */
+export const widgetSnippet = (origin, key) => `<script src="${origin}/widget.js" data-key="${key}" async></script>`;
+
+/** "1.2 (34)" with both, otherwise whichever is set (web letters often have only a build). Same rule as the CLI brief. */
+export const buildLabel = (i) => (i.app_version && i.build ? `${i.app_version} (${i.build})` : i.app_version || i.build || "");
+
 /** Same markdown as `postbox show` (packages/cli/src/index.ts), plus the decision; the photos are named, the CLI downloads them. */
 export function brief(i) {
   const row = (k, v) => (v == null || v === "" || (Array.isArray(v) && !v.length) ? [] : [`- ${k}: ${Array.isArray(v) ? v.join(", ") : v}`]);
@@ -227,8 +233,8 @@ export function brief(i) {
     ...row("project", i.project), ...row("kind", i.kind), ...row("status", i.status),
     ...row("priority", i.priority == null ? "" : priorityLabel(i.priority).toLowerCase()), ...row("labels", i.labels),
     ...row("screen", i.screen),
-    ...row("build", [i.app_version, i.build && `(${i.build})`].filter(Boolean).join(" ")),
-    ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("url", i.url),
+    ...row("build", buildLabel(i)),
+    ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("locale", i.locale), ...row("url", i.url),
     ...row("created", i.created_at),
     ...(i.attachment_count ? [`Photos: ${i.attachment_count}, run postbox show ${i.id} to download them`] : []),
     "",
