@@ -1,0 +1,57 @@
+# Deploys the web app (dashboard, API, widget) to Cloudflare Pages when a push to main touches it.
+# Staging first, then production, each migrated right before its deploy; a staging that fails its
+# smoke test (scripts/deploy.sh) stops the run before production.
+# Needs the repository variable CLOUDFLARE_ACCOUNT_ID and the secrets CLOUDFLARE_API_TOKEN
+# (Account > Cloudflare Pages > Edit), DATABASE_URL_STAGING and DATABASE_URL_PRODUCTION.
+# Without the variable (a fork, say) the job is skipped. The Pages project is `name` in wrangler.toml.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "functions/**"
+      - "lib/**"
+      - "db/**"
+      - "wrangler.toml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: deploy
+
+jobs:
+  deploy:
+    if: vars.CLOUDFLARE_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm install -g pnpm@12
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Migrate staging
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+      - name: Deploy staging
+        run: bash scripts/deploy.sh staging
+      - name: Migrate production
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+      - name: Deploy production
+        run: bash scripts/deploy.sh main
