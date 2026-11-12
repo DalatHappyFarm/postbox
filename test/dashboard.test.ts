@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appendItems, brief, briefMany, cleanToken, decodeHash, DEFAULT_STATE, encodeHash, firstLine, fitScale, groupByScreen, inView, knownLabels, labelError, listQuery, migrateToken, moreBadge, nextAfter, normalizeLabel,
-  progress, widgetSnippet, relativeTime, resizeDims, searchId, shortcutAction, stateQuery, stuckDays, STATUS_LABEL, STATUS_VIEWS, stepId, thumbPath, undoGroups, undoStack, viewCount, viewStatus, zoomAt, clampView } from "../public/lib.js";
+  progress, widgetSnippet, relativeTime, resizeDims, searchId, shortcutAction, splitTitle, stateQuery, stuckDays, summary, wideShot, contextRows, STATUS_LABEL, STATUS_VIEWS, stepId, thumbPath, undoGroups, undoStack, viewCount, viewStatus, zoomAt, clampView } from "../public/lib.js";
 
 const item = { id: 7, project: "demo", kind: "bug", status: "new", text: "Crash on save", note: null, screen: "Home", app_version: "1.2", build: "34", platform: "ios", device: null, os: "18", url: "", created_at: "2026-10-16T10:00:00Z", attachment_count: 3, has_thumb: true, priority: null, labels: [] as string[] };
 
@@ -110,6 +110,29 @@ describe("dashboard helpers", () => {
     expect(ago(65 * 86400)).toBe("2 mo ago");
     expect(ago(400 * 86400)).toBe("1 y ago");
   });
+  it("takes a headline only when the first line reads like one; a list or a long paragraph is all body", () => {
+    expect(splitTitle("Save does nothing\nOn iOS 19 since build 77")).toEqual({ title: "Save does nothing", body: "On iOS 19 since build 77" });
+    expect(splitTitle("  Typo on the paywall  ")).toEqual({ title: "Typo on the paywall", body: "" });
+    for (const t of ["1. Phần coaching rất OKE,\n2. CHỗ BÀI TẬP", "2) second", "- a\n- b", "* star", "• dot", "x".repeat(101)]) expect(splitTitle(t).title, t).toBe("");
+    expect(splitTitle("1. a\n2. b").body).toBe("1. a\n2. b");
+    expect(splitTitle("2026 roadmap\nship it").title).toBe("2026 roadmap"); // a number that is not a list marker
+    expect(summary("1. a,\n 2. b\t c ")).toBe("1. a, 2. b c");
+  });
+
+  it("knows a wide web screenshot from the viewport and folds the context into a few rows", () => {
+    expect([wideShot({ platform: "web", device: "Chrome 156 · 1440x683 @2x" }), wideShot({ platform: "web", device: "Safari 18 · 390x844 @3x" }), wideShot({ platform: "ios", device: "iPhone 15" }), wideShot({ platform: "web", device: "Chrome 1 · 1000x900" })])
+      .toEqual([true, false, false, false]);
+    const now = Date.parse("2026-11-12T12:00:00Z");
+    const web = { url: "https://www.sogilamdo.vn/", screen: "/", device: "Chrome 156 · 1440x683 @2x", os: "macOS", platform: "web", locale: "vi-VN", build: "b06f7de", created_at: "2026-11-12T10:00:00Z" };
+    expect(contextRows(web, now).map((r) => [r.k, r.v])).toEqual([["Page", "www.sogilamdo.vn"], ["Device", "Chrome 156 · 1440x683 @2x · macOS · vi-VN"], ["Build", "b06f7de"], ["Received", "2 h ago"]]);
+    expect(contextRows(web, now)[0].href).toBe("https://www.sogilamdo.vn/");
+    expect(contextRows({ ...web, url: "https://shop.vn/orders/9?x=1", screen: "Checkout" }, now)[0].v).toBe("shop.vn/orders/9?x=1 · Checkout");
+    const app = { screen: "(onboarding)/how", device: "iPhone 13", os: "26.6.1", platform: "ios", locale: "en-VN", app_version: "1.0.0", build: "2", created_at: "2026-11-12T11:59:30Z" };
+    expect(contextRows(app, now).map((r) => [r.k, r.v])).toEqual([["Screen", "(onboarding)/how"], ["Device", "iPhone 13 · iOS 26.6.1 · en-VN"], ["Build", "1.0.0 (2)"], ["Received", "just now"]]);
+    expect(contextRows({ platform: "android", os: "14" }, now).map((r) => r.v)).toEqual(["Android 14"]);
+    expect(contextRows({ platform: "web" }, now).map((r) => r.v)).toEqual(["web"]);
+  });
+
   it("counts the days an In progress letter went without change", () => {
     const now = Date.parse("2026-11-12T12:00:00Z");
     const at = (h: number) => new Date(now - h * 3600_000).toISOString();

@@ -1,6 +1,6 @@
 import { cleanToken, STATUS_LABEL, STATUS_VIEWS, KINDS, KIND_LABEL, PLATFORMS, PRIORITIES, priorityLabel, SORTS, TOKEN_KEY, migrateToken, firstLine, shortcutAction,
   decodeHash, encodeHash, stateQuery, listQuery, viewStatus, viewCount, inView, DEFAULT_STATE, nextAfter, stepId, progress, undoStack, undoGroups, groupByScreen, knownLabels,
-  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, stuckDays, logWhat, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
+  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, stuckDays, logWhat, splitTitle, summary, wideShot, contextRows, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -313,7 +313,7 @@ function rowEl(i) {
   } else { const n = el("div", "noshot"); n.append(icon("mail")); li.append(cb, n); }
   const body = el("div", "body");
   const r1 = el("div", "r1");
-  const first = el("a", "first", firstLine(i.text) || "(no text)");
+  const first = el("a", "first", summary(i.text) || "(no text)");
   first.href = encodeHash({ ...S, letter: i.id });
   r1.append(first, el("span", "when", relativeTime(i.created_at)));
   const r2 = el("div", "r2");
@@ -595,6 +595,7 @@ function topUp() {
 
 const photosOf = (i) => photoPaths(i);
 let shown = null; // {id, photoIdx, node} reuse the photo area while the same letter repaints
+const wideById = new Map(); // letter id -> its first image is landscape, measured once loaded
 let draft = { id: 0, text: "" };
 
 function showLetter() {
@@ -653,7 +654,7 @@ function paintLetter(fresh = false) {
   const pane = $("detail");
   const keepText = $("decision")?.dataset.id === String(i.id) && !fresh ? $("decision").value : null;
   const hadFocus = !fresh && document.activeElement === $("decision");
-  const wrap = el("article", `letter${i.attachment_count ? " has-photo" : ""}`);
+  const wrap = el("article", `letter${i.attachment_count ? " has-photo" : ""}${i.attachment_count && (wideById.get(i.id) ?? wideShot(i)) ? " wide" : ""}`);
   wrap.dataset.id = i.id;
 
   const head = el("div", "l-head");
@@ -669,15 +670,7 @@ function paintLetter(fresh = false) {
 
   const text = el("div", "l-text-wrap");
   text.append(...textBlock(i));
-  const dl = el("dl", "ctx");
-  const fields = [["Screen", i.screen], ["Build", buildLabel(i)], ["Platform", i.platform], ["Device", i.device], ["OS", i.os], ["Locale", i.locale], ["URL", i.url], ["Created", new Date(i.created_at).toLocaleString()]];
-  for (const [k, v] of fields) {
-    if (!v) continue;
-    const dd = el("dd");
-    if (k === "URL" && /^https?:\/\//i.test(v)) dd.append(Object.assign(el("a", "", v), { href: v, target: "_blank", rel: "noopener noreferrer" }));
-    else dd.textContent = v;
-    dl.append(el("dt", "", k), dd);
-  }
+  const dl = contextList(i);
   if (i.element) {
     const dd = el("dd", "elem");
     dd.append(Object.assign(el("code", "", i.element.selector), { title: i.element.html || "" }));
@@ -720,10 +713,23 @@ function agentNote(i) {
   return d;
 }
 
-/** First line as the headline, the rest as body: visual hierarchy photo, then headline, then detail. */
+/** The headline (when the first line reads like one) and the body; a list or one long paragraph is all body. */
 function textBlock(i) {
-  const nl = i.text.indexOf("\n"), rest = nl < 0 ? "" : i.text.slice(nl).trim();
-  return [el("h3", "l-title", nl < 0 ? i.text : i.text.slice(0, nl)), ...(rest ? [el("p", "l-text", rest)] : [])];
+  const { title, body } = splitTitle(i.text);
+  return [...(title ? [el("h3", "l-title", title)] : []), ...(body ? [el("p", title ? "l-text" : "l-text strong", body)] : [])];
+}
+
+/** Context rows (page, device, build, received), shared by the letter and the photo viewer. */
+function contextList(i, extra = []) {
+  const dl = el("dl", "ctx");
+  for (const r of [...contextRows(i), ...extra]) {
+    const dd = el("dd");
+    if (r.href && /^https?:\/\//i.test(r.href)) dd.append(Object.assign(el("a", "", r.v), { href: r.href, target: "_blank", rel: "noopener noreferrer", title: r.href }));
+    else dd.textContent = r.v;
+    if (r.title) dd.title = r.title;
+    dl.append(el("dt", "", r.k), dd);
+  }
+  return dl;
 }
 
 function photoArea(i) {
@@ -738,7 +744,14 @@ function photoArea(i) {
     if (!slot.isConnected) return;
     if (u === "") { slot.textContent = "This photo is gone: images are deleted after 90 days"; return; }
     if (!u) { slot.className = "ph bad"; slot.textContent = "This photo could not be loaded"; return; }
-    slot.replaceWith(Object.assign(el("img", "main-img"), { src: u, alt: `Photo ${idx + 1} of ${paths.length}` }));
+    const img = Object.assign(el("img", "main-img"), { src: u, alt: `Photo ${idx + 1} of ${paths.length}` });
+    // The first image sets the layout for the letter: a wide one (a desktop page) stacks above the text, a tall one sits beside it.
+    if (idx === 0) img.addEventListener("load", () => {
+      const wide = img.naturalWidth > img.naturalHeight * 1.15;
+      wideById.set(i.id, wide);
+      img.closest(".letter")?.classList.toggle("wide", wide);
+    }, { once: true });
+    slot.replaceWith(img);
   });
   stage.addEventListener("click", () => openViewer(idx));
   box.append(stage);
@@ -1009,8 +1022,7 @@ function paintSide() {
   const i = V.i, side = $("v-side");
   $("viewer").classList.toggle("no-side", !V.panel);
   $("v-info").setAttribute("aria-pressed", String(V.panel));
-  const dl = el("dl", "ctx");
-  for (const [k, v] of [["Screen", i.screen], ["Build", buildLabel(i)], ["Platform", i.platform], ["Device", i.device], ["OS", i.os], ["Status", STATUS_LABEL[i.status]], ["Priority", i.priority == null ? "" : priorityLabel(i.priority)]]) if (v) dl.append(el("dt", "", k), el("dd", "", v));
+  const dl = contextList(i, [{ k: "Status", v: STATUS_LABEL[i.status] }, ...(i.priority == null ? [] : [{ k: "Priority", v: priorityLabel(i.priority) }])]);
   side.replaceChildren(el("h2", "", `#${i.id} · ${boxName(i.project)}`), ...textBlock(i), dl, ...(i.note ? [el("h3", "", "Decision for the agent"), el("p", "", i.note)] : []), ...(i.agent_note ? [agentNote(i)] : []));
 }
 const rel = (e) => { const r = $("vstage").getBoundingClientRect(); return [e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2]; };
