@@ -17,6 +17,11 @@ echo "checking $url"
 curl -fsS --retry 5 --retry-all-errors -o /dev/null "$url/widget.js"
 curl -fsS --retry 5 --retry-all-errors -o /dev/null "$url/api/limits"
 # An unknown key is looked up in the database, so a 401 means the Functions and the database work.
-code=$(curl -s -o /dev/null -w '%{http_code}' --retry 5 -X POST -H 'X-Project-Key: deploy-smoke-test' "$url/api/submit")
+# A fresh deployment can answer 404 for a few seconds while its routes spread (curl --retry does not retry a 404), so wait up to a minute.
+for _ in $(seq 1 20); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Project-Key: deploy-smoke-test' "$url/api/submit")
+  [ "$code" = 401 ] && break
+  sleep 3
+done
 [ "$code" = 401 ] || { echo "api/submit answered $code, expected 401" >&2; exit 1; }
 echo "ok: $branch is live and reaches its database"
