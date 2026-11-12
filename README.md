@@ -33,11 +33,14 @@ npx wrangler pages secret put ADMIN_TOKEN --project-name <your-project>
 # 3. Database schema (DATABASE_URL in the environment, never committed)
 DATABASE_URL='postgres://...' pnpm db:migrate
 
-# 4. Deploy
-npx wrangler pages deploy --project-name <your-project>
+# 4. Deploy (put your project name in `name` of wrangler.toml first)
+scripts/deploy.sh main
 ```
 
 Open the printed `*.pages.dev` address and sign in with the admin token.
+
+To deploy on every push to `main`, the Deploy workflow (`.github/workflows/deploy.yml`) migrates and deploys staging, checks it, then does the same for production.
+It runs once the repository has the variable `CLOUDFLARE_ACCOUNT_ID` and the secrets `CLOUDFLARE_API_TOKEN` (a token with Account > Cloudflare Pages > Edit), `DATABASE_URL_STAGING` and `DATABASE_URL_PRODUCTION`.
 Create a mailbox (a project) with the CLI below, and give its public key to your app.
 
 ## Configuration

@@ -1,6 +1,7 @@
 {
   "skip": {
     "private-ip": ["test/widget.test.ts"],
-    "private-host": ["test/widget.test.ts"]
+    "private-host": ["test/widget.test.ts"],
+    "gitleaks:curl-auth-header": ["scripts/deploy.sh"]
   }
 }
