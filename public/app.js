@@ -1,6 +1,6 @@
 import { cleanToken, STATUS_LABEL, STATUS_VIEWS, KINDS, KIND_LABEL, PLATFORMS, PRIORITIES, priorityLabel, SORTS, TOKEN_KEY, migrateToken, firstLine, shortcutAction,
   decodeHash, encodeHash, stateQuery, listQuery, viewStatus, viewCount, inView, DEFAULT_STATE, nextAfter, stepId, progress, undoStack, undoGroups, groupByScreen, knownLabels,
-  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, stuckDays, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
+  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, stuckDays, logWhat, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -678,7 +678,20 @@ function paintLetter(fresh = false) {
     else dd.textContent = v;
     dl.append(el("dt", "", k), dd);
   }
+  if (i.element) {
+    const dd = el("dd", "elem");
+    dd.append(Object.assign(el("code", "", i.element.selector), { title: i.element.html || "" }));
+    if (i.element.text) dd.append(el("span", "muted", ` "${i.element.text}"`));
+    dl.append(el("dt", "", "Pointed at"), dd);
+  }
   text.append(dl);
+  if (i.logs?.length) {
+    const d = el("details", "logs"); d.open = i.logs.length <= 5;
+    d.append(el("summary", "", `Page errors and failed requests (${i.logs.length})`));
+    const ul = el("ul");
+    for (const e of i.logs) { const li = el("li"); li.append(el("span", "lk", e.kind), el("span", "lm", logWhat(e)), el("span", "lt", `${e.seconds_before} s`)); li.title = `${e.seconds_before} s before sending`; ul.append(li); }
+    d.append(ul); text.append(d);
+  }
   if (i.duplicates?.length) {
     const d = el("div", "dups"); d.append(el("strong", "", `${i.duplicates.length} duplicate${i.duplicates.length === 1 ? "" : "s"} folded in`));
     const ul = el("ul"); for (const x of i.duplicates) { const li = el("li"); const a = el("button", "linklike", `#${x.id} ${x.text}`); a.type = "button"; a.addEventListener("click", () => openLetter(x.id)); li.append(a); ul.append(li); }

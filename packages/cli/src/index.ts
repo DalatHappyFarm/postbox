@@ -85,7 +85,19 @@ export type Item = {
   screen: string | null; build: string | null; app_version: string | null; platform: string | null;
   device: string | null; os: string | null; locale?: string | null; url: string | null; created_at: string;
   attachment_count?: number; attachments?: Attachment[]; duplicates?: { id: number; text: string }[];
+  /** Web widget: the page's recent errors and failed requests, and the element the tester pointed at (detail only). */
+  logs?: Log[] | null; element?: { selector: string; html?: string; text?: string } | null;
 };
+export type Log = { kind: string; message: string; source?: string; method?: string; url?: string; status?: number; seconds_before: number };
+
+/** One line per entry: "3 s before sending, request: GET https://shop.test/api/cart: 500 Internal Server Error". */
+export function logLine(e: Log): string {
+  const what = e.kind === "request"
+    ? `${e.method || "GET"} ${e.url || ""}: ${e.status ? `${e.status}${e.message ? ` ${e.message}` : ""}` : `no answer${e.message ? ` (${e.message})` : ""}`}`
+    : e.kind === "resource" ? `${e.message}${e.url ? `: ${e.url}` : ""}`
+    : `${e.message}${e.source ? ` at ${e.source}` : ""}`;
+  return `${e.seconds_before} s before sending, ${e.kind}: ${what}`;
+}
 /** Downloaded image paths in display order, and the positions whose image is gone (R2 deletes images after 90 days). */
 type Photos = { photos: string[]; missing_photos: number[] };
 /** `postbox brief --json` / `claim --json`: the letter, its photo paths and the full duplicates with their paths. */
@@ -103,10 +115,12 @@ function one(i: Omit<Item, "duplicates">, ph: Photos, heading: string): string[]
     ...row("mailbox", i.project), ...row("kind", i.kind), ...row("priority", prio(i.priority)), ...row("labels", i.labels?.join(", ")), ...row("status", i.status),
     ...row("screen", i.screen), ...row("build", i.app_version && i.build ? `${i.app_version} (${i.build})` : i.app_version || i.build),
     ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("locale", i.locale), ...row("url", i.url),
-    ...row("source", i.source), ...row("created", i.created_at), ...images,
+    ...row("source", i.source), ...row("created", i.created_at),
+    ...row("element", i.element?.selector), ...row("element tag", i.element?.html), ...row("element text", i.element?.text), ...images,
     "", "## Text", "", i.text,
     ...(i.note ? ["", "## Decision for the agent", "", i.note] : []),
     ...(i.agent_note ? ["", "## Agent's note", "", i.agent_note] : []),
+    ...(i.logs?.length ? ["", `## Page errors and failed requests (${i.logs.length})`, "", ...i.logs.map((e) => `- ${logLine(e)}`)] : []),
   ];
 }
 

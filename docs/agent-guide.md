@@ -14,6 +14,7 @@ The owner reads and triages the letters in the dashboard; the agent only sees wh
    The section **Decision for the agent** is what the owner wants done and how to tell it is done; it wins over your own reading of the letter text.
    Look at every image path in the brief; most letters are understood from the picture.
    An image older than 90 days is deleted from storage; the brief lists it as `gone` and the rest still downloads.
+   A letter from a website can name the element the tester pointed at (`element`: a CSS selector, its opening tag and text; search the code for those classes or that text) and list the page's recent errors and failed requests: start there.
    **Agent's note**, when present, is what an agent wrote on an earlier attempt (the owner reopened the letter): read it before starting again.
    The **Duplicates** section holds more reports of the same problem: use them as extra evidence (other devices, builds, photos), not as separate tasks.
 4. Reproduce, fix, verify.
@@ -70,6 +71,9 @@ Failures exit with code 1 and one line on stderr (`404 not found`, `#42 is not r
 - locale: en-US
 - source: web
 - created: 2026-10-16T10:00:00Z
+- element: form > button
+- element tag: <button class="btn primary" type="submit">
+- element text: Pay
 - image 1: /tmp/postbox-42-0.png
 
 ## Text
@@ -83,6 +87,11 @@ Make it save; acceptance: a toast shows.
 ## Agent's note
 
 Tried a fix in 3ff22f9; the toast still does not show on iOS.
+
+## Page errors and failed requests (2)
+
+- 9 s before sending, error: Uncaught TypeError: Cannot read properties of undefined (reading 'price') at https://shop.example/app.js:8:28
+- 3 s before sending, request: POST https://shop.example/api/checkout: 500 Internal Server Error
 
 ## Duplicates (1)
 
@@ -119,6 +128,7 @@ All timestamps are ISO 8601 strings; fields only ever get added, never renamed.
 
 `status` is one of `new`, `ready`, `doing`, `done`, `wont_fix`, `duplicate`; `priority` is `0`-`3` or `null`; `platform` is `ios`, `android`, `web` or `null`.
 `show --json` adds `attachments: [{position, kind, bytes, content_type}]` and `duplicates: [{id, text, attachment_count}]` (the first line of each duplicate's text).
+Letters from the web widget can also carry, on `show --json` and in briefs (not in lists), `element: {selector, html?, text?}` (what the tester pointed at) and `logs: [{kind, message, source?, method?, url?, status?, seconds_before}]` (the page's recent errors and failed requests; `kind` is `error`, `rejection`, `console`, `resource` or `request`, `status` 0 means no answer); both are `null` otherwise.
 
 **Brief** (`claim --json` is one object, `brief --json` is an array in the order of the ids you gave): the letter above, plus
 
