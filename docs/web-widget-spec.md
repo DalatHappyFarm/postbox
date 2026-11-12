@@ -16,9 +16,19 @@ Slice 2 adds pointing at an element, console errors and failed requests in the b
 ## 2. When the button shows
 
 - `data-button="auto"` (default): on development, preview and staging hosts only (localhost, private IPv4, `.test`, `.local`, `.localhost`, `*.pages.dev`, `*.vercel.app`, `*.netlify.app`, `*.workers.dev`, and a first label `staging`, `stage`, `dev`, `preview`, `test` or `qa` followed by `.` or `-`), or in tester mode.
-- Tester mode: `?feedback` on any page turns it on for that browser (stored), `?feedback=off` turns it off; the switch is removed from the reported address.
+- Tester mode: `?feedback` on any page turns it on for that browser (stored), `?feedback=off` turns it off, which hides the button on staging hosts too; the switch is removed from the reported address.
 - `always` and `never` override; `never` still allows `data-postbox-open` elements and `Postbox.open()`, so a site can offer its own "Feedback" link.
-- `data-position="left"` moves the button and the panel, for sites whose chat bubble sits bottom right.
+- `data-position="left"` starts the button on the left edge.
+
+### Where it sits and how it moves (added 2026-11-12, as in the React Native kit)
+
+- A 44 px round button docked to the right edge at 62% of the viewport height, so it clears chat bubbles, "back to top" buttons and bars pinned to the bottom, which all live in the bottom corners.
+- Drag it anywhere: a move over 10 px is a drag, never a click; on release it glides to the nearest side edge and keeps the height; the safe-area insets bound it (CSS `clamp()` over `env()`), so a resize or rotation needs no script.
+- The place is stored per site as the side and the height as a share of the viewport, and beats `data-position`; a bad stored value falls back to the default.
+- While dragging it lifts (larger shadow, slight scale); pointer capture keeps the drag over iframes and outside the window; `touch-action: none` keeps a drag from scrolling the page; no text gets selected.
+- A keyboard click always opens the panel; the button only covers things visually, so keyboard users reach what is under it with Tab and need no keyboard move.
+- The panel opens on the button's side, and the button fades out while the panel is open (it stays focusable, so closing gives it focus back).
+- On a touch screen it hides while a text field of the page has focus, because the keyboard and the viewport resize would push it over the field.
 
 ## 3. The panel
 
@@ -68,6 +78,6 @@ Slice 2 adds pointing at an element, console errors and failed requests in the b
 
 ## 8. Checks
 
-- `test/widget.test.ts`: hosts, tester mode, address cleaning, screen names, user agents, meta limits, error messages, both languages complete, limits and timeouts.
+- `test/widget.test.ts`: hosts, tester mode (on, off, unset), button position (drag threshold, docking, stored place), address cleaning, screen names, user agents, meta limits, error messages, both languages complete, limits and timeouts.
 - The dashboard itself as a heavy page (about 1300 elements, `img-src 'self' blob:`): the probe reports the capture as impossible in about 0.1 s; before the probe, the capture took about 0.7 s and came back blank.
 - End to end, against `wrangler pages dev` and a site on another origin with `default-src 'self'` and `style-src 'self'`: sticky header, fixed chat button, inner scroll box, password and card fields, a masked paragraph, a hostile `div` rule, `oklch()` colors; consent, draft, the site's own `data-postbox-open` link, images by picker and paste, the image limit, every error path, phone width, a dark page, keyboard focus, a production host with and without tester mode over plain http, and the letters in the dashboard.

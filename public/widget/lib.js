@@ -37,18 +37,60 @@ export function isStagingHost(hostname) {
   return /^(staging|stage|dev|preview|test|qa)[.-]/.test(h);
 }
 
-/** `?feedback` (or `=1`) turns tester mode on for this browser, `?feedback=0|off|false` turns it off; otherwise the stored value stays. */
+/**
+ * `?feedback` (or `=1`) turns tester mode on for this browser, `?feedback=0|off|false|no` turns it off;
+ * otherwise the stored choice stays (null: never chosen).
+ * @param {string | undefined} search
+ * @param {boolean | null | undefined} stored
+ * @returns {boolean | null}
+ */
 export function testerFlag(search, stored) {
   const v = new URLSearchParams(search || "").get("feedback");
-  if (v === null) return !!stored;
+  if (v === null) return stored ?? null;
   return !["0", "off", "false", "no"].includes(v.toLowerCase());
 }
 
-/** data-button: "always", "never" or "auto" (default: staging hosts and tester mode). */
+/**
+ * data-button: "always", "never" or "auto" (default): on staging hosts and in tester mode;
+ * a tester who switched it off (`?feedback=off`) does not see it, on staging hosts either.
+ * @param {string | undefined} mode
+ * @param {string} hostname
+ * @param {boolean | null | undefined} tester
+ */
 export function showButton(mode, hostname, tester) {
   if (mode === "always") return true;
   if (mode === "never") return false;
-  return isStagingHost(hostname) || !!tester;
+  return tester ?? isStagingHost(hostname);
+}
+
+// ---- where the floating button sits: docked to a side edge at any height, moved by dragging (as in the React Native kit) ----
+
+export const FAB_REST = 0.62; // default height of the button's centre, as a share of the viewport height
+export const DRAG_SLOP = 10; // pointer movement below this (px) is a click, above it a drag
+
+/** Click or drag: true once the pointer moved more than the slop. */
+export const isDrag = (dx, dy, slop = DRAG_SLOP) => Math.hypot(dx, dy) > slop;
+
+/** Where the button's centre was let go, to the nearest side edge and the centre height as a share of the viewport. */
+export function snapFab(cx, cy, width, height) {
+  const y = height > 0 ? Math.min(1, Math.max(0, cy / height)) : FAB_REST;
+  return { side: cx < width / 2 ? "left" : "right", y: Math.round(y * 1000) / 1000 };
+}
+
+/**
+ * The position the tester left the button at (stored JSON), else data-position at the default height.
+ * @param {string | null} stored
+ * @param {string | undefined} position
+ * @returns {{ side: "left" | "right", y: number }}
+ */
+export function initialFab(stored, position) {
+  try {
+    const v = JSON.parse(stored ?? "null");
+    if ((v?.side === "left" || v?.side === "right") && Number.isFinite(v.y) && v.y >= 0 && v.y <= 1) return { side: v.side, y: v.y };
+  } catch {
+    // not JSON: fall through to the default
+  }
+  return { side: position === "left" ? "left" : "right", y: FAB_REST };
 }
 
 // ---- what is sent along ----
@@ -163,7 +205,7 @@ export function errorKey(status, error) {
 
 export const STRINGS = {
   en: {
-    button: "Send feedback", title: "Send feedback", close: "Close",
+    button: "Send feedback", move: "drag to move", title: "Send feedback", close: "Close",
     consent: "Your note, a screenshot of this page and any images you add go to the team that builds this site. Images are deleted after 90 days.",
     consentOk: "OK, continue",
     kinds: { bug: "Bug", idea: "Idea", other: "Other" }, kindLabel: "Kind",
@@ -182,7 +224,7 @@ export const STRINGS = {
     },
   },
   vi: {
-    button: "Gửi góp ý", title: "Gửi góp ý", close: "Đóng",
+    button: "Gửi góp ý", move: "kéo để di chuyển", title: "Gửi góp ý", close: "Đóng",
     consent: "Ghi chú, ảnh chụp trang này và ảnh bạn thêm sẽ được gửi cho đội làm website. Ảnh được xoá sau 90 ngày.",
     consentOk: "Đồng ý, tiếp tục",
     kinds: { bug: "Lỗi", idea: "Ý tưởng", other: "Khác" }, kindLabel: "Loại",
