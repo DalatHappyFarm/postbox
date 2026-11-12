@@ -1,0 +1,44 @@
+# Publishes every package in packages/ whose version is not on npm yet.
+# To release: bump "version" in its package.json and merge to main.
+# npm trusts this workflow by OIDC (trusted publishing), so there is no token to keep or renew,
+# and each version gets a provenance statement linking it to this commit.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: ["packages/*/package.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency: release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm install -g npm@11 pnpm@12
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build:cli
+      - name: Publish new versions
+        run: |
+          for dir in packages/*/; do
+            name=$(node -p "require('./${dir}package.json').name")
+            version=$(node -p "require('./${dir}package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on npm"
+            else
+              (cd "$dir" && npm publish)
+            fi
+          done
