@@ -49,6 +49,7 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
 |---|---|---|
 | `DATABASE_URL` | Pages secret | Postgres connection string |
 | `ADMIN_TOKEN` | Pages secret | Bearer token for the dashboard and the CLI |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Pages secrets, optional | Telegram message when testers send letters, see Notifications |
 | `SHOTS` | R2 binding in `wrangler.toml` | Bucket for screenshots and photos |
 | `MAX_ATTACHMENTS` and the other limits | `[vars]` in `wrangler.toml` | See Limits below |
 
@@ -88,6 +89,20 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
   - `GET /api/projects` (with `counts` by status and `allowed_origins` per project), `POST /api/projects` (`slug`, `name`), `PATCH /api/projects/:slug` (`{allowed_origins: [...]}`, the whole list, at most 20; `[]` allows any origin).
 - Statuses: `new`, `ready` (decided, waiting for the agent), `doing`, `done`, `wont_fix`, `duplicate`.
   Migration `0003_triage.sql` adds them; `pnpm db:migrate` applies it.
+
+## Notifications
+
+With both Telegram secrets set, Postbox sends you a Telegram message when a tester sends a letter (from the kit or the web widget; letters you add yourself stay quiet).
+Each mailbox sends at most one message per 10 minutes: a test session that sends ten letters gives one message with the first letter, the unread count and a link that opens it in the dashboard, and the next message comes after a quiet spell.
+The message is plain text, so nothing a tester types can add formatting or links, and it carries no photos.
+It is sent after the response (`waitUntil`), so it never slows a submit, and a Telegram failure is only logged (without the token).
+
+1. In Telegram, open @BotFather, send `/newbot` and keep the token it gives you.
+2. Open your new bot, press Start and send it any message.
+3. Find your chat id: `curl -s https://api.telegram.org/bot<TOKEN>/getUpdates` and read `message.chat.id` (a group works too: add the bot to it and send a message there).
+4. `npx wrangler pages secret put TELEGRAM_BOT_TOKEN --project-name <your-project>`, the same for `TELEGRAM_CHAT_ID`, then redeploy.
+
+Set them for production only, so staging and local tests do not message you.
 
 ## Limits
 
@@ -216,7 +231,7 @@ Mention in-app feedback and attached photos in your own privacy policy.
 ## Roadmap
 
 - Web widget, next: point at an element (its selector and a frame in the screenshot), recent console errors and failed requests in the brief.
-- Notifications and webhooks on new letters.
+- Webhooks on new letters and on Ready, so an agent can start without being asked.
 - Triage help: duplicates, severity, screen hints.
 - Postbox on its own domain and a one-command deploy.
 

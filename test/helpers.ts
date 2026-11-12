@@ -1,6 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import { applyMigrations } from "../lib/migrate.ts";
-import { handle, type Env, type R2, type Row, type Sql } from "../lib/api.ts";
+import { handle, type Deps, type Env, type R2, type Row, type Sql } from "../lib/api.ts";
 
 export const TOKEN = "test-admin-token";
 export const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9]).toString("base64");
@@ -28,7 +28,16 @@ export async function setup() {
     async delete(keys) { for (const k of [keys].flat()) store.delete(k); },
   };
   const env: Env = { DATABASE_URL: "x", ADMIN_TOKEN: TOKEN, SHOTS: shots };
-  const call = (path: string, init: RequestInit = {}, e: Env = env) => handle(new Request("https://hub.test" + path, init), e, sql);
+  /** Work handed to waitUntil (notifications); `settle()` waits for it. Outgoing fetches go to `sent` and answer `reply`. */
+  const pending: Promise<unknown>[] = [];
+  const sent: { url: string; body: any }[] = [];
+  const net = { reply: () => Response.json({ ok: true }) };
+  const deps: Deps = {
+    wait: (p) => { pending.push(p); },
+    fetch: (async (url: string, init: RequestInit) => { sent.push({ url, body: JSON.parse(String(init.body)) }); return net.reply(); }) as typeof fetch,
+  };
+  const settle = () => Promise.all(pending.splice(0));
+  const call = (path: string, init: RequestInit = {}, e: Env = env) => handle(new Request("https://hub.test" + path, init), e, sql, deps);
   const admin = (path: string, init: RequestInit = {}) =>
     call(path, { ...init, headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json", ...init.headers } });
   const created = await admin("/api/projects", { method: "POST", body: JSON.stringify({ slug: "demo", name: "Demo" }) });
@@ -49,7 +58,7 @@ export async function setup() {
     const raw = new Uint8Array(await req.arrayBuffer());
     return post(raw, { "content-type": req.headers.get("content-type")!, ...headers }, raw.length);
   };
-  return { db, sql, store, env, call, admin, key, submit, submitForm, post, hooks };
+  return { db, sql, store, env, call, admin, key, submit, submitForm, post, hooks, sent, net, settle };
 }
 
 /** Tiny valid JPEG: SOI, JFIF, optional extra segments, SOF0, SOS + entropy data (with a stuffed FF00), EOI. */

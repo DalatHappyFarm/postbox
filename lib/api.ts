@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { stripJpeg } from "./jpeg.ts";
 import { readLimits, type Limits } from "./limits.ts";
+import { notifyNewLetter } from "./notify.ts";
 import { MAX_ORIGINS, normalizeOrigin, originAllowed } from "./origins.ts";
 
 export type Row = Record<string, any>;
@@ -10,7 +11,10 @@ export type R2 = {
   get(key: string, opts?: { onlyIf?: Headers }): Promise<{ body?: ReadableStream | null; httpEtag?: string } | null>;
   delete(keys: string | string[]): Promise<unknown>;
 };
-export type Env = { DATABASE_URL?: string; ADMIN_TOKEN?: string; SHOTS?: R2 } & { [K in keyof Limits]?: string | number };
+export type Env = { DATABASE_URL?: string; ADMIN_TOKEN?: string; SHOTS?: R2; TELEGRAM_BOT_TOKEN?: string; TELEGRAM_CHAT_ID?: string } & { [K in keyof Limits]?: string | number };
+/** Work that may finish after the response (Pages: ctx.waitUntil), and the fetch it uses; tests pass their own. */
+export type Deps = { wait: (p: Promise<unknown>) => void; fetch: typeof fetch };
+const DEFAULT_DEPS: Deps = { wait: () => {}, fetch: (...a) => fetch(...a) };
 
 const KINDS = ["bug", "idea", "other"];
 const STATUSES = ["new", "ready", "doing", "done", "wont_fix", "duplicate"];
@@ -43,7 +47,7 @@ async function tokenOk(given: string, expected: string) {
   return diff === 0;
 }
 
-export async function handle(req: Request, env: Env, sql: Sql): Promise<Response> {
+export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFAULT_DEPS): Promise<Response> {
   const { pathname } = new URL(req.url);
   const seg = pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
   const m = req.method;
@@ -59,7 +63,7 @@ export async function handle(req: Request, env: Env, sql: Sql): Promise<Response
   if (seg[0] === "submit" && seg.length === 1) {
     if (m === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (m !== "POST") return fail(405, "method not allowed", CORS);
-    return submit(req, env, sql, L);
+    return submit(req, env, sql, L, deps);
   }
 
   if (!env.ADMIN_TOKEN) return fail(500, "misconfigured");
@@ -111,12 +115,12 @@ function prepare(raw: Uint8Array, kind: Img["kind"]): Img | [number, string] {
 
 const META_FIELDS = [["screen", 200], ["app_version", 200], ["build", 200], ["device", 200], ["os", 200], ["locale", 200], ["url", 2000], ["device_id", 200]] as const;
 
-async function submit(req: Request, env: Env, sql: Sql, L: Limits): Promise<Response> {
+async function submit(req: Request, env: Env, sql: Sql, L: Limits, deps: Deps): Promise<Response> {
   const bad = (status: number, error: string) => fail(status, error, CORS);
   // 1. key and rate limit first: a rejected caller costs no body read.
   const key = req.headers.get("x-project-key");
   if (!key) return bad(401, "missing project key");
-  const [project] = await sql`select id::int as id, slug, allowed_origins from projects where public_key = ${key}`;
+  const [project] = await sql`select id::int as id, slug, name, allowed_origins from projects where public_key = ${key}`;
   if (!project) return bad(401, "invalid project key");
   // Before the rate limit, so a page on another site cannot use up the mailbox's hourly allowance.
   if (!originAllowed(req.headers.get("origin"), project.allowed_origins)) return bad(403, "origin not allowed");
@@ -141,7 +145,11 @@ async function submit(req: Request, env: Env, sql: Sql, L: Limits): Promise<Resp
   await sql`delete from feedback where status in ('done', 'wont_fix', 'duplicate') and updated_at < now() - interval '180 days'`;
 
   const id = await saveLetter(env, sql, project, p, "app", reporter);
-  return id === null ? bad(500, "could not store images") : json({ id }, 201, CORS);
+  if (id === null) return bad(500, "could not store images");
+  const letter = { id, kind: p.kind, text: p.text, screen: p.f.screen, platform: p.b.platform ?? null };
+  deps.wait(notifyNewLetter(env, sql, project, letter, new URL(req.url).origin, deps.fetch)
+    .catch((e) => console.error("notify failed:", e instanceof Error ? e.message : "unknown")));
+  return json({ id }, 201, CORS);
 }
 
 type Letter = { b: Row; text: string; kind: string; f: Row; imgs: Img[]; thumb: Img | null };
@@ -555,14 +563,14 @@ async function createProject(req: Request, sql: Sql) {
   return json({ slug: b.slug, name: b.name, public_key: publicKey }, 201);
 }
 
-export async function route(req: Request, env: Env): Promise<Response> {
+export async function route(req: Request, env: Env, wait: Deps["wait"] = () => {}): Promise<Response> {
   if (!env.DATABASE_URL) {
     // /api/limits needs no database, so clients can read it even before the secrets are set.
     const noDb: Sql = async () => { throw new Error("no database"); };
     return new URL(req.url).pathname === "/api/limits" && req.method === "GET" ? handle(req, env, noDb) : fail(500, "misconfigured");
   }
   try {
-    return await handle(req, env, neon(env.DATABASE_URL) as unknown as Sql);
+    return await handle(req, env, neon(env.DATABASE_URL) as unknown as Sql, { wait, fetch: (...a) => fetch(...a) });
   } catch (e) {
     // Never log request bodies or keys; the message of a db error is enough.
     console.error("api error:", e instanceof Error ? e.message : "unknown");
