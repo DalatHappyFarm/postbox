@@ -79,6 +79,7 @@ export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFA
     if (seg.length === 1 && m === "GET") return list(new URL(req.url), sql);
     if (seg.length === 1 && m === "POST") return addLetter(req, env, sql, L);
     if (seg.length === 2 && seg[1] === "bulk" && m === "POST") return bulk(req, sql);
+    if (seg.length === 2 && seg[1] === "delete" && m === "POST") return remove(req, env, sql);
     const id = /^\d{1,9}$/.test(seg[1] ?? "") ? Number(seg[1]) : null;
     if (seg.length >= 2 && id === null) return fail(404, "not found");
     if (seg.length === 2 && m === "GET") return one(id!, sql);
@@ -482,6 +483,39 @@ async function bulk(req: Request, sql: Sql) {
   }
   if (rows[0].n !== uniq.length) return fail(404, "some ids do not exist");
   return json({ updated: rows[0].n });
+}
+
+/** Delete letters for good, rows and images; all ids must exist or nothing is deleted (404). */
+async function remove(req: Request, env: Env, sql: Sql) {
+  let b: Row;
+  try {
+    b = await req.json();
+  } catch {
+    return fail(400, "invalid json");
+  }
+  const ids: unknown = b?.ids;
+  if (!Array.isArray(ids) || !ids.length) return fail(400, "ids required");
+  if (ids.length > BULK_MAX) return fail(413, `at most ${BULK_MAX} ids`);
+  if (!ids.every((x) => Number.isInteger(x) && x > 0 && x < 1e9)) return fail(400, "invalid ids");
+  const uniq = [...new Set(ids as number[])];
+  // One statement. The image keys are read from the same snapshot as the delete. Letters that pointed at a deleted
+  // letter as its duplicate go back to Unread (the foreign key clears the pointer itself).
+  const [r] = await sql`with want as (select x::bigint as id from jsonb_array_elements_text(${JSON.stringify(uniq)}::jsonb) x),
+      ok as (select count(*) = ${uniq.length} as ok from feedback where id in (select id from want)),
+      keys as (
+        select a.r2_key as k from attachments a where a.feedback_id in (select id from want)
+        union all select f.thumb_key from feedback f where f.id in (select id from want) and f.thumb_key is not null),
+      freed as (
+        update feedback set status = 'new', updated_at = now()
+        where duplicate_of in (select id from want) and id not in (select id from want) and status = 'duplicate' and (select ok from ok)
+        returning 1),
+      gone as (delete from feedback where id in (select id from want) and (select ok from ok) returning 1)
+    select (select count(*)::int from gone) as n, (select count(*)::int from freed) as freed,
+      case when (select ok from ok) then coalesce((select json_agg(k) from keys), '[]'::json) else '[]'::json end as keys`;
+  if (r.n !== uniq.length) return fail(404, "some ids do not exist");
+  // After the rows are gone: an image that fails to delete here still expires with the 90-day bucket rule.
+  if (r.keys.length && env.SHOTS) await env.SHOTS.delete(r.keys).catch((e: unknown) => console.error("r2 delete failed:", e instanceof Error ? e.message : "unknown"));
+  return json({ deleted: r.n, back_to_unread: r.freed });
 }
 
 async function addLetter(req: Request, env: Env, sql: Sql, L: Limits) {

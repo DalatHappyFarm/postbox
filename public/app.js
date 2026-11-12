@@ -1,6 +1,6 @@
 import { cleanToken, STATUS_LABEL, STATUS_VIEWS, KINDS, KIND_LABEL, PLATFORMS, PRIORITIES, priorityLabel, SORTS, TOKEN_KEY, migrateToken, firstLine, shortcutAction,
   decodeHash, encodeHash, stateQuery, listQuery, viewStatus, viewCount, inView, DEFAULT_STATE, nextAfter, stepId, progress, undoStack, undoGroups, groupByScreen, knownLabels,
-  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
+  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, stuckDays, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -100,6 +100,15 @@ function neighbours(n) {
   return i < 0 ? [] : ids.slice(i + 1, i + 1 + n);
 }
 const pill = (status) => el("span", `pill ${status}`, STATUS_LABEL[status] || status);
+/** The letter's status; In progress with no change for a day or more says so, since the agent may have stopped. */
+function statusPill(i) {
+  const p = pill(i.status), d = stuckDays(i);
+  if (d) {
+    p.classList.add("stuck"); p.textContent += ` · ${d} d`;
+    p.title = `No change for ${d} day${d === 1 ? "" : "s"}: the agent may have stopped. Open the letter and use Back to unread to hand it back.`;
+  }
+  return p;
+}
 const prio = (n) => (n == null || n === 2 ? null : el("span", `prio p${n}`, priorityLabel(n)));
 
 /* ---------- URL hash ---------- */
@@ -309,7 +318,7 @@ function rowEl(i) {
   r1.append(first, el("span", "when", relativeTime(i.created_at)));
   const r2 = el("div", "r2");
   r2.append(el("span", "box", boxName(i.project)), el("span", "kind", KIND_LABEL[i.kind] || i.kind));
-  if (i.status !== "new") r2.append(pill(i.status));
+  if (i.status !== "new") r2.append(statusPill(i));
   const p = prio(i.priority); if (p) r2.append(p);
   for (const l of (i.labels || []).slice(0, 3)) r2.append(el("span", "lbl", l));
   if ((i.labels || []).length > 3) r2.append(el("span", "lbl more", `+${i.labels.length - 3}`));
@@ -391,8 +400,9 @@ function renderBulk() {
   const dup = btn("Duplicate...", { ic: "dup", title: "Mark the selected letters as duplicates of another letter", click: () => pickDuplicate(sel.map((i) => i.id)) });
   const copy = btn(`Copy brief (${n})`, { ic: "copy", title: `Copy one brief for ${n} letter${n === 1 ? "" : "s"}`, click: () => copyText(briefMany(sel), `Brief for ${n} letters copied`) });
   const clear = btn("Clear", { cls: "ghost", ic: "x", click: () => { picked.clear(); renderList(); } });
+  const delBtn = btn("Delete", { cls: "del", ic: "trash", title: `Delete ${n} letter${n === 1 ? "" : "s"} and their photos; Undo for 5 seconds`, click: () => deleteLetters(sel.map((i) => i.id)) });
   const lead = el("strong", "bulk-n", `${n} selected`);
-  const g1 = el("div", "bulk-g"); g1.append(lead, clear);
+  const g1 = el("div", "bulk-g"); g1.append(lead, delBtn, clear);
   const g2 = el("div", "bulk-g grid2c"); g2.append(status, pr, lab, dl, dup);
   const g3 = el("div", "bulk-g"); g3.append(copy, sendBtn);
   bar.replaceChildren(g1, g2, g3);
@@ -492,11 +502,66 @@ async function act(ids, patch, { verb, advance = false, counts: decided = false 
   if (nextId != null && removed.length) topUp();
 }
 
+/* ---------- delete: sent when the toast ends, so Undo only puts the letters back ---------- */
+
+const DELETE_DELAY = 5000;
+let pendingDel = null;
+
+function deleteLetters(ids) {
+  const targets = ids.map((id) => find(id)).filter(Boolean);
+  if (!targets.length) return;
+  flushDelete(); // an earlier delete goes now
+  const gone = targets.map((i) => i.id);
+  const wasOpen = gone.includes(S.letter), origin = S.letter;
+  const nextId = wasOpen ? nextAfter(orderedIds().filter((id) => id === origin || !gone.includes(id)), origin, false) : null;
+  const removed = targets.map((item) => ({ item, index: items.indexOf(item) })).sort((a, b) => a.index - b.index);
+  items = items.filter((i) => !gone.includes(i.id));
+  for (const id of gone) picked.delete(id);
+  const decided = S.triage && wasOpen;
+  if (decided) tri.done += 1;
+  renderList();
+  if (nextId != null) openLetter(nextId); else if (wasOpen) closeLetter();
+  syncChrome();
+  const e = { kind: "delete", ids: gone, removed, origin: wasOpen ? origin : 0, decided, sent: false, timer: 0 };
+  e.timer = setTimeout(flushDelete, DELETE_DELAY);
+  pendingDel = e;
+  undo.push(e);
+  toast(gone.length === 1 ? `Deleted #${gone[0]}` : `Deleted ${gone.length} letters`, true, DELETE_DELAY);
+}
+
+async function flushDelete(keepalive = false) {
+  const e = pendingDel;
+  if (!e) return;
+  pendingDel = null; clearTimeout(e.timer); e.sent = true;
+  try {
+    for (let k = 0; k < e.ids.length; k += 200) await api("/api/feedback/delete", { method: "POST", body: JSON.stringify({ ids: e.ids.slice(k, k + 200) }), keepalive });
+  } catch (err) {
+    if (err instanceof AuthError) return;
+    restoreDeleted(e);
+    toast(`Could not delete: ${why(err)}. The letters are back.`);
+    return;
+  }
+  for (const id of e.ids) details.delete(id);
+  refreshCounts();
+}
+
+function restoreDeleted(e) {
+  for (const r of e.removed) if (!items.includes(r.item)) items.splice(Math.min(r.index, items.length), 0, r.item);
+  if (e.decided) tri.done = Math.max(0, tri.done - 1);
+  renderList();
+  if (e.origin) openLetter(e.origin);
+  syncChrome();
+}
+// Leaving the page sends a waiting delete at once (keepalive lets it outlive the page).
+addEventListener("pagehide", () => flushDelete(true));
+
 const patchStatus = (i, p) => (p.duplicate_of != null ? "duplicate" : p.status || i.status);
 
 async function doUndo() {
-  const e = undo.pop();
+  let e = undo.pop();
+  while (e?.kind === "delete" && e.sent) e = undo.pop(); // already deleted for good
   if (!e) { toast("Nothing to undo."); return; }
+  if (e.kind === "delete") { clearTimeout(e.timer); pendingDel = null; restoreDeleted(e); toast("Undone."); return; }
   const live = e.before.map((b) => find(b.id)).filter(Boolean);
   for (const r of e.removed) if (!items.includes(r.item)) items.splice(Math.min(r.index, items.length), 0, r.item);
   const groups = undoGroups(e.before, e.patch);
@@ -596,7 +661,7 @@ function paintLetter(fresh = false) {
   back.setAttribute("aria-label", S.triage ? "Leave triage" : "Back to the letters");
   const copy = btn("Copy for agent", { cls: "copy", ic: "copy", title: "Copy this letter as a brief for the agent", click: () => copyText(brief(i), "Brief copied") });
   copy.setAttribute("aria-label", "Copy for agent");
-  head.append(back, el("h2", "", `#${i.id} · ${boxName(i.project)}`), pill(i.status), el("span", "kind", KIND_LABEL[i.kind] || i.kind));
+  head.append(back, el("h2", "", `#${i.id} · ${boxName(i.project)}`), statusPill(i), el("span", "kind", KIND_LABEL[i.kind] || i.kind));
   if (i.source === "web") head.append(el("span", "kind", "added by hand"));
   head.append(el("span", "spacer"), copy);
 
@@ -743,6 +808,7 @@ function decisionBlock(i, keepText) {
     btn("Done", { ic: "check", key: "e", click: () => decide("done") }),
     btn("Back to unread", { ic: "back", key: "u", click: () => decide("unread") }),
     btn("Undo", { ic: "undo", key: "z", click: doUndo }),
+    btn("Delete", { cls: "del", ic: "trash", key: "#", title: "Delete this letter and its photos (test letters, spam); Undo for 5 seconds", click: () => deleteLetters([i.id]) }),
   );
   rest.append(row, lrow, more);
   sec.append(rest);
@@ -1109,6 +1175,7 @@ document.addEventListener("keydown", (e) => {
   else if (a === "undo") doUndo();
   else if (a === "select") { const id = S.letter || orderedIds()[0]; if (id) pick(id, false); }
   else if (a === "viewer") { if (has && detail.attachment_count) openViewer(shown?.id === detail.id ? shown.idx : 0); }
+  else if (a === "delete") { if (picked.size) deleteLetters(bulkItems().map((i) => i.id)); else if (has) deleteLetters([detail.id]); }
   else if (!has) return;
   else if (a === "ready") readyKey();
   else if (a === "wont") decide("wont");

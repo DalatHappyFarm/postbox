@@ -137,7 +137,18 @@ export function buildParts(a: { meta: Meta; maxText?: number; screenshot?: Img |
 /** 20 s plus 10 s per MB, capped at 90 s. */
 export const sendTimeout = (bytes: number) => Math.min(90_000, SEND_TIMEOUT_MS + Math.ceil(bytes / (1024 * 1024)) * 10_000);
 
-export type SendResult = { ok: true } | { ok: false; error: string };
+/** `id` is the letter number the server gave (shown to the tester so they can mention it), null if the answer had none. */
+export type SendResult = { ok: true; id: number | null } | { ok: false; error: string };
+
+/** `{"id": 42}` from the submit answer; anything else is null (an older server, a proxy page). */
+export function letterId(body: string | undefined): number | null {
+  try {
+    const id = (JSON.parse(body ?? "") as { id?: unknown }).id;
+    return Number.isInteger(id) && (id as number) > 0 ? (id as number) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The slice of XMLHttpRequest that send() uses (tests pass a fake). */
 export type Xhr = {
@@ -147,6 +158,7 @@ export type Xhr = {
   abort(): void;
   timeout: number;
   status: number;
+  responseText?: string;
   onload: null | (() => void);
   onerror: null | (() => void);
   ontimeout: null | (() => void);
@@ -178,7 +190,7 @@ export function send(
       // X-Device-Id lets the server rate-limit per device before it reads the body.
       if (deviceId) x.setRequestHeader("x-device-id", deviceId);
       x.timeout = timeoutMs;
-      x.onload = () => resolve(x.status >= 200 && x.status < 300 ? { ok: true } : { ok: false, error: `http ${x.status}` });
+      x.onload = () => resolve(x.status >= 200 && x.status < 300 ? { ok: true, id: letterId(x.responseText) } : { ok: false, error: `http ${x.status}` });
       x.onerror = () => resolve({ ok: false, error: "network" });
       x.ontimeout = () => resolve({ ok: false, error: "timeout" });
       x.onabort = () => resolve({ ok: false, error: "aborted" });

@@ -215,7 +215,7 @@ export const STRINGS = {
     addImage: "Add image", paste: "or paste", remove: "Remove image", screenshot: "Screenshot of this page", image: "Image",
     drop: "Drop images to add them", full: "No more images can be added.",
     context: "Sent along",
-    send: "Send", sending: "Sending…", sent: "Sent. Thank you!",
+    send: "Send", sending: "Sending…", sent: "Sent. Thank you!", sentRef: "Letter #{id}",
     errors: {
       empty: "Write a few words first.", offline: "Could not reach the server. Check the connection and try again.",
       rate: "You have sent a lot in the last hour. Try again later.", setup: "Feedback is not set up correctly on this site.",
@@ -234,7 +234,7 @@ export const STRINGS = {
     addImage: "Thêm ảnh", paste: "hoặc dán", remove: "Xoá ảnh", screenshot: "Ảnh chụp trang này", image: "Ảnh",
     drop: "Thả ảnh vào đây để thêm", full: "Đã đủ số ảnh tối đa.",
     context: "Gửi kèm",
-    send: "Gửi", sending: "Đang gửi…", sent: "Đã gửi. Cảm ơn bạn!",
+    send: "Gửi", sending: "Đang gửi…", sent: "Đã gửi. Cảm ơn bạn!", sentRef: "Mã thư #{id}",
     errors: {
       empty: "Hãy viết vài chữ trước đã.", offline: "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
       rate: "Bạn đã gửi khá nhiều trong một giờ qua. Hãy thử lại sau.", setup: "Góp ý chưa được cài đúng trên website này.",

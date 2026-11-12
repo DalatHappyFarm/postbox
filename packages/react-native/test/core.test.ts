@@ -161,10 +161,10 @@ describe("consent and device id", () => {
 
 // A fake XMLHttpRequest. React Native's real one reads {uri, name, type} file parts natively and sends Content-Length; the
 // global fetch of Expo SDK 53+ (expo/fetch) cannot serialise such a part and throws before any byte leaves the phone.
-function fakeXhr(outcome: { status?: number; error?: boolean; hang?: boolean }) {
+function fakeXhr(outcome: { status?: number; error?: boolean; hang?: boolean; body?: string }) {
   const x = {
     headers: {} as Record<string, string>, body: undefined as unknown, opened: undefined as [string, string] | undefined,
-    timeout: 0, status: 0,
+    timeout: 0, status: 0, responseText: "",
     onload: null as null | (() => void), onerror: null as null | (() => void), ontimeout: null as null | (() => void), onabort: null as null | (() => void),
     open(m: string, u: string) { x.opened = [m, u]; },
     setRequestHeader(k: string, v: string) { x.headers[k] = v; },
@@ -174,7 +174,7 @@ function fakeXhr(outcome: { status?: number; error?: boolean; hang?: boolean }) 
       if (outcome.hang) return;
       queueMicrotask(() => {
         if (outcome.error) return x.onerror?.();
-        x.status = outcome.status ?? 201; x.onload?.();
+        x.status = outcome.status ?? 201; x.responseText = outcome.body ?? ""; x.onload?.();
       });
     },
   };
@@ -184,9 +184,9 @@ function fakeXhr(outcome: { status?: number; error?: boolean; hang?: boolean }) 
 describe("send", () => {
   const parts = [["meta", "{}"]] as Parameters<typeof send>[2];
   it("posts multipart to /api/submit with the key header and no content-type", async () => {
-    const x = fakeXhr({ status: 201 });
+    const x = fakeXhr({ status: 201, body: '{"id":7}' });
     const r = await send("https://x.dev/", "k1", parts, 1000, () => x as never);
-    expect(r).toEqual({ ok: true });
+    expect(r).toEqual({ ok: true, id: 7 });
     expect(x.opened).toEqual(["POST", "https://x.dev/api/submit"]);
     expect(x.headers).toEqual({ "x-project-key": "k1" });
     expect(x.body).toBeInstanceOf(FormData);
@@ -196,7 +196,8 @@ describe("send", () => {
   it("never goes through the global fetch (expo/fetch cannot send {uri} file parts)", async () => {
     const spy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unsupported FormDataPart implementation"));
     try {
-      expect(await send("https://x.dev", "k", parts, 1000, () => fakeXhr({ status: 201 }) as never)).toEqual({ ok: true });
+      expect(await send("https://x.dev", "k", parts, 1000, () => fakeXhr({ status: 201, body: '{"id":254}' }) as never)).toEqual({ ok: true, id: 254 });
+      expect(await send("https://x.dev", "k", parts, 1000, () => fakeXhr({ status: 201, body: "<html>" }) as never)).toEqual({ ok: true, id: null });
       expect(spy).not.toHaveBeenCalled();
     } finally { spy.mockRestore(); }
   });

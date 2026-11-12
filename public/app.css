@@ -164,6 +164,7 @@ body.triage .shell #detail{display:block}
 .pill.done{--pbg:var(--neu);--ptx:var(--neutx);--pbd:var(--neubd)}
 .pill.wont_fix{--pbg:var(--neu);--ptx:var(--neutx);--pbd:var(--neubd)}
 .pill.duplicate{--pbg:var(--dsbg);--ptx:var(--dstx);--pbd:var(--dsbd)}
+.pill.stuck{--pbg:var(--dnbg);--ptx:var(--dntx);--pbd:var(--dnbd)}
 .prio{display:inline-flex;font-size:11px;line-height:16px;font-weight:700;padding:0 6px;border-radius:4px;border:1px solid var(--pbd);background:var(--pbg);color:var(--ptx);flex:none;text-transform:uppercase;letter-spacing:.03em}
 .prio.p0{--pbg:var(--dnbg);--ptx:var(--dntx);--pbd:var(--dnbd)}
 .prio.p1{--pbg:var(--wnbg);--ptx:var(--wntx);--pbd:var(--wnbd)}
@@ -220,6 +221,7 @@ body.triage .shell #detail{display:block}
 .ctx dd{overflow-wrap:anywhere}
 .ctx dd a{color:var(--br)}
 .ctx dt:nth-last-of-type(1),.ctx dd:last-of-type{border-bottom:0}
+button.del{color:var(--dnt)}button.del:hover{border-color:var(--dnbd)}
 .dups,.dupof{margin:12px 0 0;font-size:13px}.dups ul{margin:4px 0 0;padding-left:18px}
 .agent-note{margin:12px 0 0;padding:8px 12px 10px;border-left:3px solid var(--pine);border-radius:0 8px 8px 0;background:var(--sunk)}
 .agent-note h4{margin:0 0 2px;font-size:12px;line-height:16px;font-weight:650;color:var(--mu)}

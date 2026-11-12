@@ -60,6 +60,12 @@ export function migrateToken(storage) {
 export const firstLine = (text) => String(text ?? "").split("\n")[0].trim();
 
 /** "3 h ago" style age. */
+/** Whole days an In progress letter has gone without any change (the agent may have stopped); 0 when it is fresh or not In progress. */
+export function stuckDays(i, now = Date.now()) {
+  if (i.status !== "doing" || !i.updated_at) return 0;
+  return Math.max(0, Math.floor((now - new Date(i.updated_at).getTime()) / 86_400_000));
+}
+
 export function relativeTime(iso, now = Date.now()) {
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
   if (s < 60) return "just now";
@@ -135,7 +141,7 @@ export function shortcutAction(key, pendingG = false) {
   if (pendingG) return { action: key === "i" ? "allMail" : null, pendingG: false };
   if (key === "g") return { action: null, pendingG: true };
   const simple = { j: "next", k: "prev", Enter: "open", r: "ready", w: "wont", d: "dup", l: "label", s: "skip", u: "unread", e: "done", z: "undo",
-    x: "select", t: "triage", n: "new", "/": "search", "?": "help", " ": "viewer" };
+    x: "select", t: "triage", n: "new", "/": "search", "?": "help", " ": "viewer", "#": "delete", Delete: "delete" };
   if (simple[key]) return { action: simple[key], pendingG: false };
   if (/^[1-4]$/.test(key)) return { action: `priority:${Number(key) - 1}`, pendingG: false };
   return { action: null, pendingG: false };

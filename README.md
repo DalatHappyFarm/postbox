@@ -81,6 +81,8 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
   - `PATCH /api/feedback/:id`: any of `status`, `note` (the owner's decision for the agent), `agent_note` (the agent's own note: progress, or what it changed and how it checked; the CLI writes it), `priority` (0 urgent, 1 high, 2 normal, 3 low, `null` unset), `labels` (at most 8 of 1-32 characters `a-z0-9-`), `duplicate_of` (id in the same project; sets status `duplicate`; `null` clears it).
     Leaving the `duplicate` status drops the pointer.
   - `POST /api/feedback/:id/claim`: Ready to In progress in one statement, so two agents cannot both take a letter; returns the letter, or 409 `{error: "not ready", status}`.
+  - `POST /api/feedback/delete`: `{ids: [...]}`, at most 200; deletes the letters and their images for good, in one statement, all or nothing (404 if an id does not exist); letters that were duplicates of a deleted letter go back to Unread.
+    Returns `{deleted, back_to_unread}`. The dashboard sends it 5 seconds after Delete (`#`), so Undo just puts the letters back.
   - `POST /api/feedback/bulk`: `{ids: [...], patch: {status?, priority?, labels_add?, labels_remove?}}`, at most 200 ids, one statement; all ids must exist or nothing changes (404).
     Returns `{updated}`.
   - `POST /api/feedback`: add a letter by hand (source `web`, no rate limit): multipart with `meta` (as for submit, plus `project` slug), `photo` files and an optional `thumb`; same limits, magic-byte and JPEG-metadata rules as submit.
@@ -176,6 +178,7 @@ What is sent: the note and kind, the screenshot (unless unticked) and images, th
 The address loses its user name and password, its fragment (kept only for `#/` routes) and the `feedback` switch, and query values whose names look secret (`token`, `code`, `key`, `session`, `auth`, `password`, `email`, `signature` and similar, `accessToken` included) become `redacted`.
 In the screenshot, password fields, `autocomplete="cc-*"` fields and anything marked `data-postbox-mask` are covered, and the widget itself never appears.
 The panel asks for consent once per browser, keeps an unsent note as a draft, and keeps it when a send fails.
+After a send it shows the letter number (`Letter #254`), so a tester can mention it to you.
 
 The widget runs in a shadow root and adds no inline script or style, so it works under a strict Content Security Policy that allows the Postbox origin in `script-src` and `connect-src` and `blob:` and `data:` in `img-src` (the screenshot is drawn through an image; without `data:` the panel says it could not capture the page and offers paste instead).
 The screenshot is rebuilt from the page's DOM: images and fonts from other origins appear only when they are served with CORS and allowed by `connect-src`, and cross-origin iframes stay blank, which the preview shows before anything is sent; the tester can untick it and paste a real screenshot instead.

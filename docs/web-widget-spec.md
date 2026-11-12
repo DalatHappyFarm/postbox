@@ -38,7 +38,7 @@ Allowed origins shipped first (2026-11-12, migration `0005_allowed_origins.sql`)
 ## 3. The panel
 
 - A native modal `<dialog>` in a shadow root: the top layer beats any z-index, focus is trapped and restored, Esc closes; a click on the scrim closes too.
-- Steps: consent once per browser, then the form, then "Sent" for 1.8 s.
+- Steps: consent once per browser, then the form, then "Sent" with the letter number from the answer (`Letter #254`, `Mã thư #254`) for 3.5 s, so the tester can mention it (1.8 s without a number).
 - The form: kind (Bug preselected, or the kind passed to `open`), the note (autofocus, Ctrl or Cmd+Enter sends), the screenshot preview with "Include screenshot", image tiles with remove, "Add image" (picker) and paste or drop anywhere in the panel, a line saying what is sent along (screen, browser, viewport), the error line, one primary Send button.
 - Limits come from `GET /api/limits` once per page; the screenshot counts as one of `max_attachments`; every image is re-encoded to JPEG 0.7 at most 1600 px on a white background (so transparent PNGs do not turn black), with a 320 px thumbnail of the first image, as in the kit.
 - The note and kind are kept as a draft per key until a send succeeds; a failed send keeps everything and says why (offline, rate limit, set-up, too large, bad image, server).
