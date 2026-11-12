@@ -596,6 +596,7 @@ export function start(script, queue = []) {
       if (!res.ok) {
         const err = await res.json().then((j) => j.error, () => "");
         if (res.status === 401) console.warn(`Postbox: the server refused the project key (${err}).`);
+        if (res.status === 403) console.warn(`Postbox: ${location.origin} is not in this mailbox's allowed origins; add it with postbox project origins.`);
         setError(t.errors[errorKey(res.status, err)]);
         return;
       }

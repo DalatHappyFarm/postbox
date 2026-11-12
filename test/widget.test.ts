@@ -109,8 +109,8 @@ group("web widget helpers", () => {
   });
 
   it("maps failed sends to a message", () => {
-    expect([errorKey(0, ""), errorKey(429, "rate limit exceeded"), errorKey(401, "invalid project key"), errorKey(413, "images too large together"), errorKey(413, "text too long"), errorKey(415, "invalid jpeg"), errorKey(400, "text is required"), errorKey(500, "x"), errorKey(400, "invalid kind")])
-      .toEqual(["offline", "rate", "setup", "tooLarge", "textLong", "badImage", "empty", "server", "server"]);
+    expect([errorKey(0, ""), errorKey(429, "rate limit exceeded"), errorKey(401, "invalid project key"), errorKey(403, "origin not allowed"), errorKey(413, "images too large together"), errorKey(413, "text too long"), errorKey(415, "invalid jpeg"), errorKey(400, "text is required"), errorKey(500, "x"), errorKey(400, "invalid kind")])
+      .toEqual(["offline", "rate", "setup", "setup", "tooLarge", "textLong", "badImage", "empty", "server", "server"]);
     for (const lang of ["en", "vi"] as const) for (const k of ["offline", "rate", "setup", "tooLarge", "textLong", "badImage", "empty", "server"]) expect(STRINGS[lang].errors[k as keyof typeof STRINGS.en.errors], `${lang}.${k}`).toBeTruthy();
   });
 

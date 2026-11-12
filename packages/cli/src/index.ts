@@ -36,7 +36,9 @@ const USAGE = `usage:
   postbox done <id> --note "..."                     Done, with your note on what changed and how you checked it
   postbox note <id> "..."                            your progress note (the owner's decision is kept)
   postbox project add <slug> <name>                   prints the public key (pbk_...)
-  postbox project snippet <slug>                      the <script> tag that puts the feedback widget on a website`;
+  postbox project snippet <slug>                      the <script> tag that puts the feedback widget on a website
+  postbox project origins <slug> [origin ...] [--any] the websites allowed to send with this mailbox's key: no origins prints the list,
+                                                      origins replace it (https://shop.com, https://*.shop.com, http://localhost:*), --any clears it`;
 
 function migrateConfig(d: Deps) {
   if (!d.legacyConfigPath || existsSync(d.configPath) || !existsSync(d.legacyConfigPath)) return;
@@ -177,7 +179,7 @@ export async function run(argv: string[], d: Deps = realDeps()): Promise<void> {
       project: { type: "string" }, status: { type: "string" }, kind: { type: "string" },
       json: { type: "boolean" }, note: { type: "string" }, priority: { type: "string" }, label: { type: "string" },
       screen: { type: "string" }, source: { type: "string" }, q: { type: "string" }, sort: { type: "string" }, text: { type: "string" },
-      photo: { type: "string", multiple: true },
+      photo: { type: "string", multiple: true }, any: { type: "boolean" },
     },
   });
   const [cmd, a, b] = p;
@@ -248,6 +250,16 @@ export async function run(argv: string[], d: Deps = realDeps()): Promise<void> {
     const box = all.find((x) => x.slug === p[2]);
     if (!box) throw new Error(`no mailbox "${p[2]}"; create it with postbox project add ${p[2]} "Name"`);
     return d.out(`<script src="${config(d).url}/widget.js" data-key="${box.public_key}" async></script>`);
+  }
+  if (cmd === "project" && a === "origins" && p[2]) {
+    const want = p.slice(3);
+    if (values.any && want.length) throw new Error("give origins or --any, not both");
+    const box = values.any || want.length
+      ? (await (await api(d, `/api/projects/${encodeURIComponent(p[2])}`, { method: "PATCH", body: JSON.stringify({ allowed_origins: want }) })).json()) as { allowed_origins: string[] }
+      : ((await (await api(d, "/api/projects")).json()) as { slug: string; allowed_origins?: string[] }[]).find((x) => x.slug === p[2]);
+    if (!box) throw new Error(`no mailbox "${p[2]}"`);
+    const list = box.allowed_origins ?? [];
+    return d.out(list.length ? list.join("\n") : "any origin (no list): every website can send with this key");
   }
   if (cmd === "project" && a === "add" && p[2] && p[3]) {
     const r = (await (await api(d, "/api/projects", { method: "POST", body: JSON.stringify({ slug: p[2], name: p[3] }) })).json()) as { public_key: string };
