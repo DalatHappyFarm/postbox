@@ -73,11 +73,12 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
   Check order: project key, rate limit, `Content-Length` (411 if missing, 413 if too large, body unread), counts and sizes, magic bytes, stripping, parallel R2 writes.
   Returns `{id}`.
 - Admin, header `Authorization: Bearer <ADMIN_TOKEN>`:
-  - `GET /api/feedback`: filters `project`, `status` (comma list, `new,ready`), `kind`, `screen`, `build`, `priority` (`0`-`3` or `none`), `label`, `source` (`app|web`), `q` (case-insensitive search in text and note); `sort` is `new` (default), `old` or `priority` (priority, then oldest); `limit` (max 200) and `cursor`.
+  - `GET /api/feedback`: filters `project`, `status` (comma list, `new,ready`), `kind`, `screen`, `build`, `priority` (`0`-`3` or `none`), `label`, `source` (`app|web`), `q` (case-insensitive search in the text, the decision and the agent's note); `sort` is `new` (default), `old` or `priority` (priority, then oldest); `limit` (max 200) and `cursor`.
     The first page (no `cursor`) also carries `counts`: `{status: {new, ready, doing, done, wont_fix, duplicate}, screen: [{screen, n}]}` with the top 20 screens, computed for the same `project`, `kind` and `q` but not the other filters, in two grouped queries.
-  - `GET /api/feedback/:id`: the letter with `priority`, `labels`, `duplicate_of`, `source`, `attachments` and `duplicates` (`[{id, text, attachment_count}]`, the letters that point at this one).
-  - `PATCH /api/feedback/:id`: any of `status`, `note` (the decision for the agent), `priority` (0 urgent, 1 high, 2 normal, 3 low, `null` unset), `labels` (at most 8 of 1-32 characters `a-z0-9-`), `duplicate_of` (id in the same project; sets status `duplicate`; `null` clears it).
+  - `GET /api/feedback/:id`: the letter with `priority`, `labels`, `duplicate_of`, `source`, `agent_note`, `attachments` and `duplicates` (`[{id, text, attachment_count}]`, the letters that point at this one).
+  - `PATCH /api/feedback/:id`: any of `status`, `note` (the owner's decision for the agent), `agent_note` (the agent's own note: progress, or what it changed and how it checked; the CLI writes it), `priority` (0 urgent, 1 high, 2 normal, 3 low, `null` unset), `labels` (at most 8 of 1-32 characters `a-z0-9-`), `duplicate_of` (id in the same project; sets status `duplicate`; `null` clears it).
     Leaving the `duplicate` status drops the pointer.
+  - `POST /api/feedback/:id/claim`: Ready to In progress in one statement, so two agents cannot both take a letter; returns the letter, or 409 `{error: "not ready", status}`.
   - `POST /api/feedback/bulk`: `{ids: [...], patch: {status?, priority?, labels_add?, labels_remove?}}`, at most 200 ids, one statement; all ids must exist or nothing changes (404).
     Returns `{updated}`.
   - `POST /api/feedback`: add a letter by hand (source `web`, no rate limit): multipart with `meta` (as for submit, plus `project` slug), `photo` files and an optional `thumb`; same limits, magic-byte and JPEG-metadata rules as submit.
@@ -181,14 +182,14 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
 postbox project snippet my-site       # the <script> tag that puts the web widget on a site
 postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
-postbox claim 42 [--json]             # Ready -> In progress and prints the brief; fails if the letter is not Ready
-postbox brief 42 43 [--json]          # markdown brief per letter: decision, duplicates folded in, every photo downloaded to the temp dir
+postbox claim 42 [--json]             # Ready -> In progress in one step on the server, then prints the brief; fails if the letter is not Ready (or another agent took it)
+postbox brief 42 43 [--json]          # markdown brief per letter: decision, agent's note, duplicates folded in, every photo downloaded to the temp dir (an image deleted after 90 days is listed as gone)
 postbox show 42 [--json]              # one brief; --json is the raw letter
 postbox list [--project slug] [--status new,ready] [--kind k] [--priority 0-3|none] [--label l] [--screen s] [--source app|web] [--q text] [--sort new|old|priority] [--json]
 postbox add --project my-app --text "..." [--kind bug] [--screen Home] [--photo a.png --photo b.jpg]   # add a letter from the terminal
 postbox status 42 doing               # new | ready | doing | done | wont_fix
-postbox note 42 "reproduced on iOS 19"
-postbox done 42 --note "fixed in build 78"
+postbox note 42 "reproduced on iOS 19"           # the agent's note; the owner's decision is kept
+postbox done 42 --note "fixed in build 78"       # Done, and the note says what changed and how it was checked
 ```
 
 `--json` shapes are documented in `docs/agent-guide.md`.

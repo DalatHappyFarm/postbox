@@ -221,6 +221,9 @@ body.triage .shell #detail{display:block}
 .ctx dd a{color:var(--br)}
 .ctx dt:nth-last-of-type(1),.ctx dd:last-of-type{border-bottom:0}
 .dups,.dupof{margin:12px 0 0;font-size:13px}.dups ul{margin:4px 0 0;padding-left:18px}
+.agent-note{margin:12px 0 0;padding:8px 12px 10px;border-left:3px solid var(--pine);border-radius:0 8px 8px 0;background:var(--sunk)}
+.agent-note h4{margin:0 0 2px;font-size:12px;line-height:16px;font-weight:650;color:var(--mu)}
+.agent-note p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:20px}
 @container (min-width:720px){
   .letter.has-photo{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);align-items:start;column-gap:24px}
   .letter.has-photo .l-head{grid-column:1/-1}
@@ -320,6 +323,7 @@ dialog::backdrop{background:var(--ov)}
 .v-stage{position:absolute;inset:64px 72px 52px;overflow:hidden;touch-action:none;user-select:none}
 .v-stage.can-pan{cursor:grab}.v-stage.drag{cursor:grabbing}
 #vimg{position:absolute;left:50%;top:50%;max-width:none;transform-origin:center;will-change:transform}
+.v-msg{position:absolute;inset:0;display:grid;place-items:center;margin:0;padding:24px;text-align:center;color:#ffffffcc;font-size:14px}
 .v-bar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:2px;align-items:center;padding:4px;background:#1f1f21ee;border:1px solid #ffffff30;border-radius:10px;z-index:2}
 .v-bar button,.v-nav{background:transparent;color:#fff;border-color:transparent;min-height:40px}
 .v-bar button:hover,.v-nav:hover{background:#ffffff26}
@@ -332,6 +336,7 @@ dialog::backdrop{background:var(--ov)}
 .v-count{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);margin:0;padding:2px 12px;border-radius:12px;background:#1f1f21cc;font-weight:600;z-index:2}
 .v-side{background:var(--bg);color:var(--tx);padding:20px;overflow:auto;border-left:1px solid var(--bd);display:grid;gap:12px;align-content:start}
 .v-side h2{margin:0;font-size:14px;color:var(--mu)}
+.v-side .agent-note{margin:0}
 .v-side h3{margin:4px 0 0;font-size:13px}
 .v-side .l-title{margin:0;font-size:16px;line-height:22px}
 .v-side p{margin:0;overflow-wrap:anywhere}

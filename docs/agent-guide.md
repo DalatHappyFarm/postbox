@@ -8,16 +8,19 @@ The owner reads and triages the letters in the dashboard; the agent only sees wh
 1. `postbox queue --project my-app` lists the Ready letters, highest priority first, oldest first within a priority.
    An empty queue prints `queue is empty`: stop, there is nothing decided for you.
 2. `postbox claim <id>` sets the letter to In progress and prints its brief.
-   It fails when the letter is not Ready, so two agents cannot take the same letter by accident.
+   The server does this in one step and refuses a letter that is not Ready, so two agents cannot take the same letter, even at the same moment.
+   If the brief cannot be built (a network error, say), the claim hands the letter back to Ready.
 3. Read the brief.
    The section **Decision for the agent** is what the owner wants done and how to tell it is done; it wins over your own reading of the letter text.
    Look at every image path in the brief; most letters are understood from the picture.
+   An image older than 90 days is deleted from storage; the brief lists it as `gone` and the rest still downloads.
+   **Agent's note**, when present, is what an agent wrote on an earlier attempt (the owner reopened the letter): read it before starting again.
    The **Duplicates** section holds more reports of the same problem: use them as extra evidence (other devices, builds, photos), not as separate tasks.
 4. Reproduce, fix, verify.
 5. `postbox done <id> --note "what changed and how it was verified"`.
-   The note is mandatory and lands in the letter for the owner's review.
+   The note is mandatory and lands in the letter's **Agent's note** for the owner's review; the owner's decision stays as it was.
 
-Use `postbox brief <id> <id> ...` to read several letters at once, `postbox show <id>` to read one without claiming it, and `postbox note <id> "..."` to leave a progress note.
+Use `postbox brief <id> <id> ...` to read several letters at once, `postbox show <id>` to read one without claiming it, and `postbox note <id> "..."` to leave a progress note (it replaces your earlier note, never the decision).
 
 ## Rules
 
@@ -77,6 +80,10 @@ Save button does nothing
 
 Make it save; acceptance: a toast shows.
 
+## Agent's note
+
+Tried a fix in 3ff22f9; the toast still does not show on iOS.
+
 ## Duplicates (1)
 
 More reports of the same problem; read them as extra evidence.
@@ -85,7 +92,7 @@ More reports of the same problem; read them as extra evidence.
 
 - mailbox: demo
 ...
-- image 1: /tmp/postbox-43-0.jpg
+- image 1: gone (images are deleted after 90 days)
 
 ## Text
 
@@ -103,7 +110,7 @@ All timestamps are ISO 8601 strings; fields only ever get added, never renamed.
 
 ```json
 {
-  "id": 42, "project": "demo", "kind": "bug", "text": "...", "status": "ready", "note": "decision or null",
+  "id": 42, "project": "demo", "kind": "bug", "text": "...", "status": "ready", "note": "decision or null", "agent_note": "agent's note or null",
   "priority": 1, "labels": ["ui"], "duplicate_of": null, "source": "app",
   "screen": "Settings", "app_version": "1.2.0", "build": "77", "platform": "ios", "device": "iPhone 15", "os": "iOS 19", "locale": "en-US", "url": null,
   "attachment_count": 3, "has_thumb": true, "created_at": "...", "updated_at": "..."
@@ -118,11 +125,12 @@ All timestamps are ISO 8601 strings; fields only ever get added, never renamed.
 ```json
 {
   "photos": ["/tmp/postbox-42-0.png", "/tmp/postbox-42-1.jpg"],
-  "duplicates": [{ "id": 43, "text": "...", "attachments": [], "photos": ["/tmp/postbox-43-0.jpg"] }]
+  "missing_photos": [],
+  "duplicates": [{ "id": 43, "text": "...", "attachments": [], "photos": [], "missing_photos": [0] }]
 }
 ```
 
-`photos` are absolute paths of the downloaded images in display order; each duplicate carries all the letter fields (shown shortened above), its own `photos` and no nested `duplicates`.
+`photos` are absolute paths of the downloaded images in display order; `missing_photos` are the attachment positions whose image is gone (deleted after 90 days); each duplicate carries all the letter fields (shown shortened above), its own `photos` and no nested `duplicates`.
 
 **Add** (`add --json`): `{"id": 7}`.
 

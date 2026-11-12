@@ -242,6 +242,7 @@ export function brief(i) {
     "",
     i.text,
     ...(i.note ? ["", "## Decision for the agent", "", i.note] : []),
+    ...(i.agent_note ? ["", "## Agent's note", "", i.agent_note] : []),
     ...(i.duplicates?.length ? ["", "## Duplicates folded in", "", ...i.duplicates.map((d) => `- #${d.id}: ${d.text}`)] : []),
   ].join("\n");
 }

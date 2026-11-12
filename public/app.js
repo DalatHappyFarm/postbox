@@ -75,8 +75,9 @@ function signOut(message = "") {
 /* ---------- images: blob URLs cached per letter (the API needs the token header, so <img src> cannot point at it) ---------- */
 
 const blobCache = new Map(); // path -> Promise<blob url | null>
+/** Object URL of an image; "" when it is gone (404: R2 deletes images after 90 days), null when it could not be loaded. */
 const blobUrl = (path) => {
-  if (!blobCache.has(path)) blobCache.set(path, api(path).then((r) => r.blob()).then((b) => URL.createObjectURL(b)).catch(() => null));
+  if (!blobCache.has(path)) blobCache.set(path, api(path).then((r) => r.blob()).then((b) => URL.createObjectURL(b)).catch((e) => (String(e?.message).startsWith("404 ") ? "" : null)));
   return blobCache.get(path);
 };
 const photoPaths = (i) => Array.from({ length: i.attachment_count || 0 }, (_, n) => `/api/feedback/${i.id}/attachments/${n}`);
@@ -623,6 +624,7 @@ function paintLetter(fresh = false) {
     const a = el("button", "linklike", `#${i.duplicate_of}`); a.type = "button"; a.addEventListener("click", () => openLetter(i.duplicate_of)); d.append(a);
     text.append(d);
   }
+  if (i.agent_note) text.append(agentNote(i));
 
   const decide = decisionBlock(i, keepText);
   const side = el("div", "l-side");
@@ -631,6 +633,13 @@ function paintLetter(fresh = false) {
   pane.replaceChildren(wrap);
   if (fresh) { pane.scrollTop = 0; $("announce").textContent = `Letter ${i.id}: ${firstLine(i.text)}${S.triage ? `. ${Math.max(0, tri.total - tri.done)} left` : ""}`; }
   if (hadFocus) $("decision")?.focus();
+}
+
+/** What the agent wrote (progress, or what it changed and how it checked), kept apart from the owner's decision. */
+function agentNote(i) {
+  const d = el("div", "agent-note");
+  d.append(el("h4", "", "From the agent"), el("p", "", i.agent_note));
+  return d;
 }
 
 /** First line as the headline, the rest as body: visual hierarchy photo, then headline, then detail. */
@@ -649,6 +658,7 @@ function photoArea(i) {
   const slot = el("span", "ph", "Loading photo"); stage.append(slot);
   blobUrl(paths[idx]).then((u) => {
     if (!slot.isConnected) return;
+    if (u === "") { slot.textContent = "This photo is gone: images are deleted after 90 days"; return; }
     if (!u) { slot.className = "ph bad"; slot.textContent = "This photo could not be loaded"; return; }
     slot.replaceWith(Object.assign(el("img", "main-img"), { src: u, alt: `Photo ${idx + 1} of ${paths.length}` }));
   });
@@ -895,20 +905,21 @@ function openViewer(idx = 0) {
 async function showPhoto(n) {
   const paths = photosOf(V.i); V.idx = stepId(paths.map((_, k) => k), n, 0);
   $("v-prev").disabled = V.idx === 0; $("v-next").disabled = V.idx === paths.length - 1;
+  $("v-prev").hidden = $("v-next").hidden = paths.length < 2;
   $("v-count").textContent = `${V.idx + 1} / ${paths.length}`; $("v-count").hidden = paths.length < 2;
-  const img = $("vimg"); img.style.visibility = "hidden";
+  const img = $("vimg"); img.style.visibility = "hidden"; $("v-msg").hidden = true;
   const u = await blobUrl(paths[V.idx]);
   if (!$("viewer").open) return;
   img.onload = () => { V.nw = img.naturalWidth || 1; V.nh = img.naturalHeight || 1; img.style.width = `${V.nw}px`; img.style.height = `${V.nh}px`; img.style.margin = `${-V.nh / 2}px 0 0 ${-V.nw / 2}px`; fitView(); img.style.visibility = "visible"; };
   img.alt = `Photo ${V.idx + 1} of ${paths.length}`; img.src = u || "";
-  if (!u) { $("v-zoom").textContent = "Could not load this photo"; }
+  if (!u) { $("v-zoom").textContent = "–"; $("v-msg").textContent = u === "" ? "This photo is gone: images are deleted after 90 days." : "Could not load this photo. Check your connection, then try again."; $("v-msg").hidden = false; }
 }
 const minScale = () => { const [w, h] = stageSize(); return fitScale(w, h, V.nw, V.nh); };
 function paintView() {
   const [w, h] = stageSize();
   V.view = clampView(V.view, w, h, V.nw, V.nh);
   $("vimg").style.transform = `translate(${V.view.x}px, ${V.view.y}px) scale(${V.view.s})`;
-  $("v-zoom").textContent = `${Math.round(V.view.s * 100)}%`;
+  $("v-zoom").textContent = $("v-msg").hidden ? `${Math.round(V.view.s * 100)}%` : "–";
   $("v-fit").setAttribute("aria-pressed", String(V.fit));
   $("vstage").classList.toggle("can-pan", V.view.s > minScale() + 0.001);
 }
@@ -921,7 +932,7 @@ function paintSide() {
   $("v-info").setAttribute("aria-pressed", String(V.panel));
   const dl = el("dl", "ctx");
   for (const [k, v] of [["Screen", i.screen], ["Build", buildLabel(i)], ["Platform", i.platform], ["Device", i.device], ["OS", i.os], ["Status", STATUS_LABEL[i.status]], ["Priority", i.priority == null ? "" : priorityLabel(i.priority)]]) if (v) dl.append(el("dt", "", k), el("dd", "", v));
-  side.replaceChildren(el("h2", "", `#${i.id} · ${boxName(i.project)}`), ...textBlock(i), dl, ...(i.note ? [el("h3", "", "Decision for the agent"), el("p", "", i.note)] : []));
+  side.replaceChildren(el("h2", "", `#${i.id} · ${boxName(i.project)}`), ...textBlock(i), dl, ...(i.note ? [el("h3", "", "Decision for the agent"), el("p", "", i.note)] : []), ...(i.agent_note ? [agentNote(i)] : []));
 }
 const rel = (e) => { const r = $("vstage").getBoundingClientRect(); return [e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2]; };
 $("vstage").addEventListener("wheel", (e) => { e.preventDefault(); const [x, y] = rel(e); zoomBy(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018)), x, y); }, { passive: false });

@@ -33,8 +33,8 @@ const USAGE = `usage:
   postbox list [--project slug] [--status a,b] [--kind k] [--priority 0-3|none] [--label l] [--screen s] [--source app|web] [--q text] [--sort new|old|priority] [--json]
   postbox add --project slug --text "..." [--kind bug|idea|other] [--screen s] [--photo path ...] [--json]
   postbox status <id> <new|ready|doing|done|wont_fix>
-  postbox done <id> --note "..."
-  postbox note <id> "..."
+  postbox done <id> --note "..."                     Done, with your note on what changed and how you checked it
+  postbox note <id> "..."                            your progress note (the owner's decision is kept)
   postbox project add <slug> <name>                   prints the public key (pbk_...)
   postbox project snippet <slug>                      the <script> tag that puts the feedback widget on a website`;
 
@@ -78,58 +78,71 @@ const patch = async (d: Deps, id: string, body: object) =>
 
 export type Attachment = { position: number; kind: string; bytes: number | null; content_type: string };
 export type Item = {
-  id: number; project: string; kind: string; text: string; status: string; note: string | null;
+  id: number; project: string; kind: string; text: string; status: string; note: string | null; agent_note?: string | null;
   priority?: number | null; labels?: string[]; duplicate_of?: number | null; source?: string;
   screen: string | null; build: string | null; app_version: string | null; platform: string | null;
   device: string | null; os: string | null; locale?: string | null; url: string | null; created_at: string;
   attachment_count?: number; attachments?: Attachment[]; duplicates?: { id: number; text: string }[];
 };
+/** Downloaded image paths in display order, and the positions whose image is gone (R2 deletes images after 90 days). */
+type Photos = { photos: string[]; missing_photos: number[] };
 /** `postbox brief --json` / `claim --json`: the letter, its photo paths and the full duplicates with their paths. */
-export type Brief = Omit<Item, "duplicates"> & { photos: string[]; duplicates: (Omit<Item, "duplicates"> & { photos: string[] })[] };
+export type Brief = Omit<Item, "duplicates"> & Photos & { duplicates: (Omit<Item, "duplicates"> & Photos)[] };
 
 const prio = (p?: number | null) => (p == null ? null : `${p} (${PRIORITY[p]})`);
 const row = (k: string, v: unknown) => (v == null || v === "" ? [] : [`- ${k}: ${v}`]);
 
-function one(i: Omit<Item, "duplicates">, paths: string[], heading: string): string[] {
+function one(i: Omit<Item, "duplicates">, ph: Photos, heading: string): string[] {
+  let k = 0; // positions run 0..n-1, so image n is either missing or the next downloaded path
+  const images = Array.from({ length: ph.photos.length + ph.missing_photos.length }, (_, n) =>
+    `- image ${n + 1}: ${ph.missing_photos.includes(n) ? "gone (images are deleted after 90 days)" : ph.photos[k++]}`);
   return [
     heading, "",
     ...row("mailbox", i.project), ...row("kind", i.kind), ...row("priority", prio(i.priority)), ...row("labels", i.labels?.join(", ")), ...row("status", i.status),
     ...row("screen", i.screen), ...row("build", i.app_version && i.build ? `${i.app_version} (${i.build})` : i.app_version || i.build),
     ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("locale", i.locale), ...row("url", i.url),
-    ...row("source", i.source), ...row("created", i.created_at), ...paths.map((p, n) => `- image ${n + 1}: ${p}`),
+    ...row("source", i.source), ...row("created", i.created_at), ...images,
     "", "## Text", "", i.text,
     ...(i.note ? ["", "## Decision for the agent", "", i.note] : []),
+    ...(i.agent_note ? ["", "## Agent's note", "", i.agent_note] : []),
   ];
 }
 
 /** One Markdown document per letter; duplicates (more reports of the same problem) follow as evidence. */
-export function brief(i: Item | Brief, paths: string[] = (i as Brief).photos ?? []): string {
+export function brief(i: Item | Brief, ph: Photos = { photos: (i as Brief).photos ?? [], missing_photos: (i as Brief).missing_photos ?? [] }): string {
   const dups = ((i as Brief).duplicates ?? []).filter((x): x is Brief["duplicates"][number] => "photos" in x);
   return [
-    ...one(i, paths, `# Feedback #${i.id}`),
+    ...one(i, ph, `# Feedback #${i.id}`),
     ...(dups.length ? ["", `## Duplicates (${dups.length})`, "", "More reports of the same problem; read them as extra evidence.", ""] : []),
-    ...dups.flatMap((x) => [...one(x, x.photos, `### Duplicate #${x.id}`), ""]),
+    ...dups.flatMap((x) => [...one(x, x, `### Duplicate #${x.id}`), ""]),
   ].join("\n").trimEnd();
 }
 
 const ext = (t: string) => (t === "image/png" ? "png" : "jpg");
 const fetchItem = async (d: Deps, id: string | number) => (await (await api(d, `/api/feedback/${id}`)).json()) as Item;
 
-/** Every attachment goes to the temp folder (in parallel); paths come back in display order. */
-async function download(d: Deps, item: Item): Promise<string[]> {
-  return Promise.all((item.attachments ?? []).map(async (at) => {
-    const res = await api(d, `/api/feedback/${item.id}/attachments/${at.position}`);
+/** Every attachment goes to the temp folder (in parallel); an image that is gone (404) is listed, not fatal. */
+async function download(d: Deps, item: Item): Promise<Photos> {
+  const got = await Promise.all((item.attachments ?? []).map(async (at) => {
+    let res: Response;
+    try {
+      res = await api(d, `/api/feedback/${item.id}/attachments/${at.position}`);
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("404 ")) return at.position;
+      throw e;
+    }
     const path = join(d.tmp, `postbox-${item.id}-${at.position}.${ext(at.content_type)}`);
     writeFileSync(path, new Uint8Array(await res.arrayBuffer()));
     return path;
   }));
+  return { photos: got.filter((x) => typeof x === "string"), missing_photos: got.filter((x) => typeof x === "number") };
 }
 
 async function fullBrief(d: Deps, id: string | number): Promise<Brief> {
   const item = await fetchItem(d, id);
   const dupItems = await Promise.all((item.duplicates ?? []).map((x) => fetchItem(d, x.id)));
-  const [photos, ...dupPhotos] = await Promise.all([item, ...dupItems].map((x) => download(d, x)));
-  return { ...item, photos, duplicates: dupItems.map((x, n) => ({ ...x, duplicates: undefined, photos: dupPhotos[n] })) } as Brief;
+  const [ph, ...dupPhotos] = await Promise.all([item, ...dupItems].map((x) => download(d, x)));
+  return { ...item, ...ph, duplicates: dupItems.map((x, n) => ({ ...x, duplicates: undefined, ...dupPhotos[n] })) } as Brief;
 }
 
 const sniff = (b: Buffer) => (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? "image/jpeg" : b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? "image/png" : null);
@@ -193,11 +206,18 @@ export async function run(argv: string[], d: Deps = realDeps()): Promise<void> {
   if ((cmd === "show" || cmd === "brief" || cmd === "claim") && a) {
     const id = a;
     if (cmd === "claim") {
-      const cur = await fetchItem(d, id);
-      if (cur.status !== "ready") throw new Error(`#${id} is not ready (status: ${cur.status}); only the owner sets Ready`);
-      await patch(d, id, { status: "doing" });
+      try {
+        await api(d, `/api/feedback/${id}/claim`, { method: "POST" });
+      } catch (e) {
+        if (!(e instanceof Error && e.message.startsWith("409 "))) throw e;
+        throw new Error(`#${id} is not ready (status: ${(await fetchItem(d, id)).status}); only the owner sets Ready`);
+      }
     }
-    const briefs = await Promise.all((cmd === "brief" ? p.slice(1) : [id]).map((x) => fullBrief(d, x)));
+    const briefs = await Promise.all((cmd === "brief" ? p.slice(1) : [id]).map((x) => fullBrief(d, x))).catch(async (e) => {
+      // A claim that cannot show its brief hands the letter back, so it is not stuck In progress.
+      if (cmd === "claim") await patch(d, id, { status: "ready" }).catch(() => {});
+      throw e;
+    });
     if (values.json) return asJson(cmd === "brief" ? briefs : briefs[0]);
     return d.out(briefs.map((x) => brief(x)).join("\n\n---\n\n"));
   }
@@ -216,11 +236,11 @@ export async function run(argv: string[], d: Deps = realDeps()): Promise<void> {
   }
   if (cmd === "done" && a) {
     if (!values.note) throw new Error('postbox done needs --note "..."');
-    await patch(d, a, { status: "done", note: values.note });
+    await patch(d, a, { status: "done", agent_note: values.note });
     return d.out(`#${a} -> done`);
   }
   if (cmd === "note" && a && b) {
-    await patch(d, a, { note: b });
+    await patch(d, a, { agent_note: b });
     return d.out(`#${a} note saved`);
   }
   if (cmd === "project" && a === "snippet" && p[2]) {

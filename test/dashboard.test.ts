@@ -114,9 +114,9 @@ describe("dashboard helpers", () => {
       "# Feedback #7", "", "- project: demo", "- kind: bug", "- status: new", "- screen: Home", "- build: 1.2 (34)", "- platform: ios", "- os: 18",
       "- created: 2026-10-16T10:00:00Z", "Photos: 3, run postbox show 7 to download them", "", "## Text", "", "Crash on save",
     ].join("\n"));
-    const full = brief({ ...item, attachment_count: 0, note: "Fix it, add a test", priority: 0, labels: ["ux", "login"], duplicates: [{ id: 9, text: "Same crash" }] });
+    const full = brief({ ...item, attachment_count: 0, note: "Fix it, add a test", agent_note: "Fixed in 3ff22f9", priority: 0, labels: ["ux", "login"], duplicates: [{ id: 9, text: "Same crash" }] });
     expect(full).toContain("- priority: urgent\n- labels: ux, login\n- screen: Home");
-    expect(full).toContain("## Decision for the agent\n\nFix it, add a test");
+    expect(full).toContain("## Decision for the agent\n\nFix it, add a test\n\n## Agent's note\n\nFixed in 3ff22f9");
     expect(full).toContain("## Duplicates folded in\n\n- #9: Same crash");
     expect(full).not.toContain("Photos:");
   });

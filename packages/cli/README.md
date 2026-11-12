@@ -26,14 +26,14 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
 postbox project snippet my-site       # the <script> tag that puts the web widget on a site
 postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
-postbox claim 42 [--json]             # Ready -> In progress and prints the brief; fails if the letter is not Ready
-postbox brief 42 43 [--json]          # markdown brief per letter: decision, duplicates folded in, every photo downloaded to the temp dir
+postbox claim 42 [--json]             # Ready -> In progress in one step on the server, then prints the brief; fails if the letter is not Ready (or another agent took it)
+postbox brief 42 43 [--json]          # markdown brief per letter: decision, agent's note, duplicates folded in, every photo downloaded to the temp dir (an image deleted after 90 days is listed as gone)
 postbox show 42 [--json]              # one brief; --json is the raw letter
 postbox list [--project slug] [--status new,ready] [--kind k] [--priority 0-3|none] [--label l] [--screen s] [--source app|web] [--q text] [--sort new|old|priority] [--json]
 postbox add --project my-app --text "..." [--kind bug] [--screen Home] [--photo a.png --photo b.jpg]   # add a letter from the terminal
 postbox status 42 doing               # new | ready | doing | done | wont_fix
-postbox note 42 "reproduced on iOS 19"
-postbox done 42 --note "fixed in build 78"
+postbox note 42 "reproduced on iOS 19"           # the agent's note; the owner's decision is kept
+postbox done 42 --note "fixed in build 78"       # Done, and the note says what changed and how it was checked
 ```
 
 `--json` shapes are documented in `docs/agent-guide.md` of the repository.

@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
@@ -34,7 +34,7 @@ describe("migration 0003", () => {
     await applyMigrations(mdb, dir);
     await db.exec(`insert into projects (slug, name, public_key) values ('demo', 'Demo', 'pbk_${"a".repeat(20)}'), ('other', 'Other', 'pbk_${"b".repeat(20)}');
       insert into feedback (project_id, kind, text, status) values (1, 'bug', 'old one', 'doing'), (1, 'idea', 'old two', 'new'), (2, 'bug', 'elsewhere', 'new');`);
-    expect(await applyMigrations(mdb, real)).toEqual(["0003_triage.sql"]);
+    expect(await applyMigrations(mdb, real)).toEqual(readdirSync(real).filter((f) => f > "0003").sort()); // 0003 and every later one
     expect((await db.query("select id::int as id, status, priority, labels, duplicate_of, source from feedback order by id")).rows).toEqual([
       { id: 1, status: "doing", priority: null, labels: [], duplicate_of: null, source: "app" },
       { id: 2, status: "new", priority: null, labels: [], duplicate_of: null, source: "app" },
@@ -204,6 +204,31 @@ describe("detail and PATCH", () => {
     await patch(2, { duplicate_of: 1 });
     await patch(2, { note: "kept" }); // unrelated patch keeps the pointer
     expect(await get("/api/feedback/2")).toMatchObject({ status: "duplicate", duplicate_of: 1, note: "kept" });
+  });
+
+  it("agent_note is the agent's own field: it never touches the owner's decision and is searchable", async () => {
+    await patch(1, { note: "Make it save; a toast shows" });
+    const r = await patch(1, { status: "done", agent_note: "fixed in 3ff22f9, toast checked on iOS" });
+    expect(await r.json()).toMatchObject({ status: "done", note: "Make it save; a toast shows", agent_note: "fixed in 3ff22f9, toast checked on iOS" });
+    expect((await get("/api/feedback?q=3FF22F9")).items.map((i: any) => i.id)).toEqual([1]);
+    expect((await get("/api/feedback?q=3ff22f9")).counts.status.done).toBe(1);
+    expect((await patch(1, { status: "ready" })).status).toBe(200); // reopened: both stay for the next attempt
+    expect(await get("/api/feedback/1")).toMatchObject({ status: "ready", note: "Make it save; a toast shows", agent_note: "fixed in 3ff22f9, toast checked on iOS" });
+    expect(await (await patch(1, { agent_note: null })).json()).toMatchObject({ agent_note: null, note: "Make it save; a toast shows" });
+    for (const body of [{ agent_note: 7 }, { agent_note: "x".repeat(4001) }]) expect((await patch(1, body)).status).toBe(400);
+  });
+
+  it("claim: Ready becomes In progress once; a second claim, a letter that is not Ready and a missing one are refused", async () => {
+    const claim = (id: number) => t.admin(`/api/feedback/${id}/claim`, { method: "POST" });
+    await patch(1, { status: "ready", note: "do it" });
+    const [a, b] = await Promise.all([claim(1), claim(1)]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    const ok = a.status === 200 ? a : b;
+    expect(await ok.json()).toMatchObject({ id: 1, status: "doing", note: "do it" });
+    expect(await (a.status === 409 ? a : b).json()).toEqual({ error: "not ready", status: "doing" });
+    expect(await (await claim(2)).json()).toEqual({ error: "not ready", status: "new" });
+    expect((await claim(99)).status).toBe(404);
+    expect((await t.call("/api/feedback/1/claim", { method: "POST" })).status).toBe(401);
   });
 
   it("requires admin", async () => {

@@ -66,14 +66,14 @@ describe("postbox", () => {
     expect(JSON.parse(h.out[1])).toEqual([item]);
   });
 
-  it("done patches status and note; status validates", async () => {
+  it("done and note write the agent's note and leave the owner's decision alone; status validates", async () => {
     const h = harness(() => Response.json({ ...item, status: "done" }));
     await run(["done", "42", "--note", "fixed in 78"], h.d);
     expect(h.calls[0].init.method).toBe("PATCH");
-    expect(JSON.parse(h.calls[0].init.body as string)).toEqual({ status: "done", note: "fixed in 78" });
+    expect(JSON.parse(h.calls[0].init.body as string)).toEqual({ status: "done", agent_note: "fixed in 78" });
     await expect(run(["status", "42", "open"], h.d)).rejects.toThrow("status must be");
     await run(["note", "42", "hello"], h.d);
-    expect(JSON.parse(h.calls[1].init.body as string)).toEqual({ note: "hello" });
+    expect(JSON.parse(h.calls[1].init.body as string)).toEqual({ agent_note: "hello" });
   });
 
   it("project add prints the key and surfaces api errors", async () => {
@@ -132,6 +132,8 @@ describe("postbox", () => {
   const dup = { ...item, id: 43, text: "same bug, with photo", status: "duplicate", duplicate_of: 42, attachment_count: 1, attachments: [{ position: 0, kind: "photo", bytes: 2, content_type: "image/jpeg" }], duplicates: [] };
   const router = (calls: string[] = []) => (url: string, init: RequestInit) => {
     calls.push(`${init?.method ?? "GET"} ${url.replace("https://hub.test", "")}`);
+    const c = /feedback\/(\d+)\/claim$/.exec(url);
+    if (c) return c[1] === "42" ? Response.json({ ...full, status: "doing" }) : Response.json({ error: "not ready", status: "duplicate" }, { status: 409 });
     const m = /feedback\/(\d+)(?:\/attachments\/(\d))?$/.exec(url);
     if (m?.[2]) return new Response(new Uint8Array([Number(m[1]), Number(m[2])]));
     if (m?.[1] === "42") return Response.json(full);
@@ -188,17 +190,49 @@ describe("postbox", () => {
     await expect(run(["brief", "99"], h.d)).rejects.toThrow("404 not found");
   });
 
-  it("claim patches ready to doing, then prints the brief; refuses a letter that is not ready", async () => {
+  it("claim takes the letter on the server in one step, then prints the brief; refuses a letter that is not ready", async () => {
     const calls: string[] = [];
     const h = harness(router(calls));
     await run(["claim", "42"], h.d);
-    const patchIdx = calls.indexOf("PATCH /api/feedback/42");
-    expect(patchIdx).toBeGreaterThan(0);
-    expect(calls.slice(0, patchIdx)).toEqual(["GET /api/feedback/42"]); // status check before the change, downloads after
+    expect(calls[0]).toBe("POST /api/feedback/42/claim"); // the server checks Ready and sets In progress atomically
+    expect(calls).not.toContain("PATCH /api/feedback/42");
     expect(h.out[0]).toContain("## Decision for the agent");
     const notReady = harness(router());
     await expect(run(["claim", "43"], notReady.d)).rejects.toThrow("#43 is not ready (status: duplicate)");
     expect(notReady.calls.some((c) => c.init.method === "PATCH")).toBe(false);
+  });
+
+  it("a photo that is gone (older than 90 days) is listed, not fatal, in the brief and its duplicates", async () => {
+    const gone = (url: string) => /\/42\/attachments\/1$|\/43\/attachments\/0$/.test(url);
+    const base = router();
+    const h = harness((url, init) => (gone(url) ? Response.json({ error: "not found" }, { status: 404 }) : base(url, init)));
+    await run(["claim", "42"], h.d);
+    const p = (id: number, n: number, e: string) => join(h.dir, `postbox-${id}-${n}.${e}`);
+    const lines = h.out[0].split("\n");
+    expect(lines.filter((l) => l.startsWith("- image"))).toEqual([
+      `- image 1: ${p(42, 0, "png")}`, "- image 2: gone (images are deleted after 90 days)", `- image 3: ${p(42, 2, "jpg")}`,
+      "- image 1: gone (images are deleted after 90 days)",
+    ]);
+    await run(["brief", "42", "--json"], h.d);
+    const [j] = JSON.parse(h.out[1]);
+    expect(j).toMatchObject({ photos: [p(42, 0, "png"), p(42, 2, "jpg")], missing_photos: [1] });
+    expect(j.duplicates[0]).toMatchObject({ photos: [], missing_photos: [0] });
+  });
+
+  it("a claim whose brief cannot be built hands the letter back to Ready", async () => {
+    const calls: string[] = [];
+    const base = router(calls);
+    const h = harness((url, init) => (url.endsWith("/attachments/0") && url.includes("/42/") ? Response.json({ error: "internal error" }, { status: 500 }) : base(url, init)));
+    await expect(run(["claim", "42"], h.d)).rejects.toThrow("500 internal error");
+    const back = h.calls.find((c) => c.init.method === "PATCH");
+    expect(back?.url).toBe("https://hub.test/api/feedback/42");
+    expect(JSON.parse(back?.init.body as string)).toEqual({ status: "ready" });
+  });
+
+  it("the brief shows the agent's earlier note after the owner's decision", async () => {
+    const h = harness(() => Response.json({ ...item, attachments: [], note: "Make it save", agent_note: "Tried a fix in 3ff22f9; toast still missing on iOS" }));
+    await run(["show", "42"], h.d);
+    expect(h.out[0]).toContain(["## Decision for the agent", "", "Make it save", "", "## Agent's note", "", "Tried a fix in 3ff22f9; toast still missing on iOS"].join("\n"));
   });
 
   it("add sends multipart with meta and photos after client-side checks", async () => {
