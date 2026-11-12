@@ -38,7 +38,8 @@ const USAGE = `usage:
   postbox project add <slug> <name>                   prints the public key (pbk_...)
   postbox project snippet <slug>                      the <script> tag that puts the feedback widget on a website
   postbox project origins <slug> [origin ...] [--any] the websites allowed to send with this mailbox's key: no origins prints the list,
-                                                      origins replace it (https://shop.com, https://*.shop.com, http://localhost:*), --any clears it`;
+                                                      origins replace it (https://shop.com, https://*.shop.com, http://localhost:*), --any clears it
+  postbox telegram connect                            let the Telegram bot decide letters from the chat (needs its secrets on the server)`;
 
 function migrateConfig(d: Deps) {
   if (!d.legacyConfigPath || existsSync(d.configPath) || !existsSync(d.legacyConfigPath)) return;
@@ -274,6 +275,10 @@ export async function run(argv: string[], d: Deps = realDeps()): Promise<void> {
     if (!box) throw new Error(`no mailbox "${p[2]}"`);
     const list = box.allowed_origins ?? [];
     return d.out(list.length ? list.join("\n") : "any origin (no list): every website can send with this key");
+  }
+  if (cmd === "telegram" && a === "connect") {
+    const r = (await (await api(d, "/api/telegram/connect", { method: "POST" })).json()) as { url: string };
+    return d.out(`Telegram now sends replies and buttons to ${r.url}`);
   }
   if (cmd === "project" && a === "add" && p[2] && p[3]) {
     const r = (await (await api(d, "/api/projects", { method: "POST", body: JSON.stringify({ slug: p[2], name: p[3] }) })).json()) as { public_key: string };

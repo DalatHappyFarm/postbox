@@ -88,22 +88,32 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
   - `POST /api/feedback`: add a letter by hand (source `web`, no rate limit): multipart with `meta` (as for submit, plus `project` slug), `photo` files and an optional `thumb`; same limits, magic-byte and JPEG-metadata rules as submit.
     Returns `{id}`.
   - `GET /api/feedback/:id/attachments/:position`, `GET /api/feedback/:id/thumb`, `GET /api/feedback/:id/screenshot` (alias of attachment 0).
+  - `POST /api/telegram/connect`: points the Telegram bot's webhook at this Postbox (`POST /api/telegram`, which only Telegram can call: it checks the secret header) and sets its commands.
   - `POST /api/pair`: a one-time code for "Sign in on your phone" (`{code, expires_at}`, 5 minutes); only its SHA-256 is stored. `POST /api/pair/claim` (public) trades `{code}` for `{token}` once.
   - `GET /api/projects` (with `counts` by status and `allowed_origins` per project), `POST /api/projects` (`slug`, `name`), `PATCH /api/projects/:slug` (`{allowed_origins: [...]}`, the whole list, at most 20; `[]` allows any origin).
 - Statuses: `new`, `ready` (decided, waiting for the agent), `doing`, `done`, `wont_fix`, `duplicate`.
   Migration `0003_triage.sql` adds them; `pnpm db:migrate` applies it.
 
-## Notifications
+## Notifications and deciding from Telegram
 
 With both Telegram secrets set, Postbox sends you a Telegram message when a tester sends a letter (from the kit or the web widget; letters you add yourself stay quiet).
-Each mailbox sends at most one message per 10 minutes: a test session that sends ten letters gives one message with the first letter, the unread count and a link that opens it in the dashboard, and the next message comes after a quiet spell.
-The message is plain text, so nothing a tester types can add formatting or links, and it carries no photos.
+Each mailbox sends at most one message per 10 minutes: a test session that sends ten letters gives one message with the first letter and the unread count, and the next message comes after a quiet spell.
+The message is plain text, so nothing a tester types can add formatting or links, and it carries no photos (Open in Postbox shows them).
+
+After `postbox telegram connect` you can also decide letters in the chat:
+- **Reply** to a letter's message with what the agent should do: the letter goes to Ready with your reply as the decision (a closed letter is reopened, and the bot says what it was).
+- **Won't fix** closes it; every change has **Undo**, which puts the status back (your words stay as the decision).
+- **Next unread** (or `/next`) shows the oldest unread letter of any mailbox, so you can work through the inbox from your phone.
+- **Open in Postbox** opens the letter; sign the phone in once with the phone button in the dashboard header (a QR code).
+
+Telegram calls `POST /api/telegram` with a secret header derived from `ADMIN_TOKEN` (no extra secret to keep; run `postbox telegram connect` again after changing the token), and only the chat in `TELEGRAM_CHAT_ID` is listened to.
 It is sent after the response (`waitUntil`), so it never slows a submit, and a Telegram failure is only logged (without the token).
 
 1. In Telegram, open @BotFather, send `/newbot` and keep the token it gives you.
 2. Open your new bot, press Start and send it any message.
 3. Find your chat id: `curl -s https://api.telegram.org/bot<TOKEN>/getUpdates` and read `message.chat.id` (a group works too: add the bot to it and send a message there).
 4. `npx wrangler pages secret put TELEGRAM_BOT_TOKEN --project-name <your-project>`, the same for `TELEGRAM_CHAT_ID`, then redeploy.
+5. `postbox telegram connect` (with the CLI logged in to production) to decide letters from the chat; before it, the bot only sends messages.
 
 Set them for production only, so staging and local tests do not message you.
 
@@ -204,6 +214,7 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
 postbox project snippet my-site       # the <script> tag that puts the web widget on a site
 postbox project origins my-site https://shop.com "https://*.shop.com" "http://localhost:*"   # only these websites may send with the key; no origins prints the list, --any clears it
+postbox telegram connect              # decide letters from Telegram: replies and buttons reach this Postbox
 postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
 postbox claim 42 [--json]             # Ready -> In progress in one step on the server, then prints the brief; fails if the letter is not Ready (or another agent took it)
 postbox brief 42 43 [--json]          # markdown brief per letter: decision, agent's note, duplicates folded in, every photo downloaded to the temp dir (an image deleted after 90 days is listed as gone)

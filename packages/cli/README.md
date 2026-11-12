@@ -26,6 +26,7 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
 postbox project snippet my-site       # the <script> tag that puts the web widget on a site
 postbox project origins my-site https://shop.com "https://*.shop.com" "http://localhost:*"   # only these websites may send with the key; no origins prints the list, --any clears it
+postbox telegram connect              # decide letters from Telegram: replies and buttons reach this Postbox
 postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
 postbox claim 42 [--json]             # Ready -> In progress in one step on the server, then prints the brief; fails if the letter is not Ready (or another agent took it)
 postbox brief 42 43 [--json]          # markdown brief per letter: decision, agent's note, duplicates folded in, every photo downloaded to the temp dir (an image deleted after 90 days is listed as gone)
