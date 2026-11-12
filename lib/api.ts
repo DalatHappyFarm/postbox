@@ -77,6 +77,7 @@ export async function handle(req: Request, env: Env, sql: Sql): Promise<Response
     if (seg.length >= 2 && id === null) return fail(404, "not found");
     if (seg.length === 2 && m === "GET") return one(id!, sql);
     if (seg.length === 2 && m === "PATCH") return patch(id!, req, sql, L);
+    if (seg.length === 3 && seg[2] === "claim" && m === "POST") return claim(id!, sql);
     if (m === "GET" && seg.length === 3 && seg[2] === "screenshot") return attachment(id!, 0, req, env, sql);
     if (m === "GET" && seg.length === 3 && seg[2] === "thumb") return thumb(id!, req, env, sql);
     if (m === "GET" && seg.length === 4 && seg[2] === "attachments" && /^\d{1,4}$/.test(seg[3])) return attachment(id!, Number(seg[3]), req, env, sql);
@@ -309,7 +310,7 @@ async function list(url: URL, sql: Sql) {
   const limit = Math.min(Math.max(Number(q.get("limit") ?? 50) || 50, 1), 200);
   const statusCsv = statuses?.join(",") ?? null;
   // A tagged template cannot splice raw SQL, so a null parameter means "no filter".
-  const rowsP = sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at
+  const rowsP = sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.agent_note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at
     from feedback f join projects p on p.id = f.project_id
     where (${project}::text is null or p.slug = ${project}::text)
       and (${statusCsv}::text is null or f.status = any(string_to_array(${statusCsv}::text, ',')))
@@ -319,7 +320,7 @@ async function list(url: URL, sql: Sql) {
       and (${prio}::text is null or f.priority::text = ${prio}::text or (${prio}::text = 'none' and f.priority is null))
       and (${label}::text is null or f.labels @> array[${label}::text])
       and (${source}::text is null or f.source = ${source}::text)
-      and (${like}::text is null or f.text ilike ${like}::text or f.note ilike ${like}::text)
+      and (${like}::text is null or f.text ilike ${like}::text or f.note ilike ${like}::text or f.agent_note ilike ${like}::text)
       and (${cid}::bigint is null
         or (${sort}::text = 'new' and f.id < ${cid}::bigint)
         or (${sort}::text = 'old' and f.id > ${cid}::bigint)
@@ -332,11 +333,11 @@ async function list(url: URL, sql: Sql) {
   const countsP = cursor ? null : Promise.all([
     sql`select f.status, count(*)::int as n from feedback f join projects p on p.id = f.project_id
       where (${project}::text is null or p.slug = ${project}::text) and (${kind}::text is null or f.kind = ${kind}::text)
-        and (${like}::text is null or f.text ilike ${like}::text or f.note ilike ${like}::text)
+        and (${like}::text is null or f.text ilike ${like}::text or f.note ilike ${like}::text or f.agent_note ilike ${like}::text)
       group by f.status`,
     sql`select f.screen, count(*)::int as n from feedback f join projects p on p.id = f.project_id
       where f.screen is not null and (${project}::text is null or p.slug = ${project}::text) and (${kind}::text is null or f.kind = ${kind}::text)
-        and (${like}::text is null or f.text ilike ${like}::text or f.note ilike ${like}::text)
+        and (${like}::text is null or f.text ilike ${like}::text or f.note ilike ${like}::text or f.agent_note ilike ${like}::text)
       group by f.screen order by n desc, f.screen limit 20`,
   ]);
   const [rows, counts] = await Promise.all([rowsP, countsP]);
@@ -347,7 +348,7 @@ async function list(url: URL, sql: Sql) {
 }
 
 async function fetchOne(id: number, sql: Sql) {
-  const [row] = await sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at,
+  const [row] = await sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.agent_note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at,
     coalesce((select json_agg(json_build_object('position', a.position, 'kind', a.kind, 'bytes', a.bytes, 'content_type', a.content_type) order by a.position) from attachments a where a.feedback_id = f.id), '[]'::json) as attachments,
     coalesce((select json_agg(json_build_object('id', d.id::int, 'text', left(split_part(d.text, E'\n', 1), 200), 'attachment_count', d.attachment_count::int) order by d.id) from feedback d where d.duplicate_of = f.id), '[]'::json) as duplicates
     from feedback f join projects p on p.id = f.project_id where f.id = ${id}`;
@@ -373,9 +374,9 @@ async function patch(id: number, req: Request, sql: Sql, L: Limits) {
   }
   if (!b || typeof b !== "object" || Array.isArray(b)) return fail(400, "invalid json");
   const has = (k: string) => b[k] !== undefined;
-  if (!["status", "note", "priority", "labels", "duplicate_of"].some(has)) return fail(400, "status, note, priority, labels or duplicate_of required");
+  if (!["status", "note", "agent_note", "priority", "labels", "duplicate_of"].some(has)) return fail(400, "status, note, agent_note, priority, labels or duplicate_of required");
   if (has("status") && !STATUSES.includes(b.status)) return fail(400, "invalid status");
-  if (has("note") && b.note !== null && (typeof b.note !== "string" || b.note.length > L.MAX_TEXT)) return fail(400, "invalid note");
+  for (const k of ["note", "agent_note"]) if (has(k) && b[k] !== null && (typeof b[k] !== "string" || b[k].length > L.MAX_TEXT)) return fail(400, `invalid ${k}`);
   if (has("priority") && !isPrio(b.priority)) return fail(400, "invalid priority");
   const labels = has("labels") ? validLabels(b.labels) : null;
   if (has("labels") && !labels) return fail(400, "invalid labels");
@@ -402,6 +403,7 @@ async function patch(id: number, req: Request, sql: Sql, L: Limits) {
       status = case when ${status}::text is not null then ${status}::text
                     when ${dup === null}::boolean and status = 'duplicate' then 'new' else status end,
       note = case when ${has("note")}::boolean then ${b.note ?? null}::text else note end,
+      agent_note = case when ${has("agent_note")}::boolean then ${b.agent_note ?? null}::text else agent_note end,
       priority = case when ${has("priority")}::boolean then ${b.priority ?? null}::smallint else priority end,
       labels = case when ${labels !== null}::boolean then array(select jsonb_array_elements_text(${JSON.stringify(labels ?? [])}::jsonb)) else labels end,
       -- leaving the duplicate status, or clearing the pointer, drops the pointer
@@ -415,6 +417,14 @@ async function patch(id: number, req: Request, sql: Sql, L: Limits) {
   }
   if (!rows.length) return fail(404, "not found");
   return json(await fetchOne(id, sql));
+}
+
+/** Ready -> In progress in one statement, so two agents cannot both take a letter; 409 when it is not Ready. */
+async function claim(id: number, sql: Sql) {
+  const rows = await sql`update feedback set status = 'doing', updated_at = now() where id = ${id} and status = 'ready' returning id`;
+  if (rows.length) return json(await fetchOne(id, sql));
+  const [cur] = await sql`select status from feedback where id = ${id}`;
+  return cur ? json({ error: "not ready", status: cur.status }, 409) : fail(404, "not found");
 }
 
 const BULK_MAX = 200;
