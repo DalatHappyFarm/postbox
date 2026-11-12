@@ -88,6 +88,7 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
   - `POST /api/feedback`: add a letter by hand (source `web`, no rate limit): multipart with `meta` (as for submit, plus `project` slug), `photo` files and an optional `thumb`; same limits, magic-byte and JPEG-metadata rules as submit.
     Returns `{id}`.
   - `GET /api/feedback/:id/attachments/:position`, `GET /api/feedback/:id/thumb`, `GET /api/feedback/:id/screenshot` (alias of attachment 0).
+  - `POST /api/pair`: a one-time code for "Sign in on your phone" (`{code, expires_at}`, 5 minutes); only its SHA-256 is stored. `POST /api/pair/claim` (public) trades `{code}` for `{token}` once.
   - `GET /api/projects` (with `counts` by status and `allowed_origins` per project), `POST /api/projects` (`slug`, `name`), `PATCH /api/projects/:slug` (`{allowed_origins: [...]}`, the whole list, at most 20; `[]` allows any origin).
 - Statuses: `new`, `ready` (decided, waiting for the agent), `doing`, `done`, `wont_fix`, `duplicate`.
   Migration `0003_triage.sql` adds them; `pnpm db:migrate` applies it.
@@ -220,6 +221,7 @@ postbox done 42 --note "fixed in build 78"       # Done, and the note says what 
 
 - Testers send with a per-project public key (`pbk_` plus 48 hex characters). It is not a secret and only allows submitting; submits are rate limited per device, IP and project.
 - Reading and changing feedback needs the single `ADMIN_TOKEN`.
+- "Sign in on your phone" (the phone button in the dashboard header) shows a QR code with a one-time code, not the token: it works once, for 5 minutes, and the server keeps only its hash; the phone trades it for the token and removes it from the address bar.
 - Images are accepted by magic bytes only, and JPEG metadata (EXIF, GPS) is stripped on the server.
 - The key is visible in a website's HTML like in an app bundle.
   Before the widget goes on a public site, list the site with `postbox project origins <slug> https://your-site.com` (wildcards `https://*.your-site.com` and `http://localhost:*` work): browsers then refuse to send that key from any other website.

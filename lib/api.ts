@@ -68,6 +68,8 @@ export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFA
   }
 
   if (!env.ADMIN_TOKEN) return fail(500, "misconfigured");
+  // A phone trades a one-time code (shown as a QR code on the owner's computer) for the admin token.
+  if (seg[0] === "pair" && seg[1] === "claim" && seg.length === 2 && m === "POST") return claimPair(req, env, sql);
   const bearer = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
   if (!bearer || !(await tokenOk(bearer, env.ADMIN_TOKEN))) return fail(401, "unauthorized");
 
@@ -76,6 +78,7 @@ export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFA
     if (m === "POST") return createProject(req, sql);
   }
   if (seg[0] === "projects" && seg.length === 2 && m === "PATCH") return patchProject(seg[1], req, sql);
+  if (seg[0] === "pair" && seg.length === 1 && m === "POST") return newPair(sql);
   if (seg[0] === "feedback") {
     if (seg.length === 1 && m === "GET") return list(new URL(req.url), sql);
     if (seg.length === 1 && m === "POST") return addLetter(req, env, sql, L);
@@ -558,6 +561,31 @@ async function attachment(id: number, position: number, req: Request, env: Env, 
 async function thumb(id: number, req: Request, env: Env, sql: Sql) {
   const [row] = await sql`select thumb_key from feedback where id = ${id}`;
   return row?.thumb_key ? stream(row.thumb_key, "image/jpeg", req, env) : fail(404, "no thumb");
+}
+
+export const PAIR_MINUTES = 5;
+
+/** A code for "sign in on your phone": 128 random bits, kept only as a hash, valid once for PAIR_MINUTES. */
+async function newPair(sql: Sql) {
+  await sql`delete from pair_codes where expires_at < now()`;
+  const code = hex(crypto.getRandomValues(new Uint8Array(16)));
+  const [row] = await sql`insert into pair_codes (code_hash, expires_at)
+    values (${hex(await sha256(code))}, now() + make_interval(mins => ${PAIR_MINUTES}::int)) returning expires_at`;
+  return json({ code, expires_at: row.expires_at });
+}
+
+/** Trade a valid code for the admin token; the code is gone after this, used or not. */
+async function claimPair(req: Request, env: Env, sql: Sql) {
+  let b: Row;
+  try {
+    b = await req.json();
+  } catch {
+    return fail(400, "invalid json");
+  }
+  if (typeof b?.code !== "string" || !/^[0-9a-f]{32}$/.test(b.code)) return fail(400, "invalid code");
+  const rows = await sql`delete from pair_codes where code_hash = ${hex(await sha256(b.code))} returning expires_at > now() as fresh`;
+  if (!rows.length || !rows[0].fresh) return fail(404, "this code has expired or was already used");
+  return json({ token: env.ADMIN_TOKEN }, 200, { "cache-control": "no-store" });
 }
 
 /** Set a mailbox's allowed origins (the whole list; [] allows any origin). */

@@ -299,8 +299,16 @@ button.del{color:var(--dnt)}button.del:hover{border-color:var(--dnbd)}
 /* dialogs */
 dialog{border:1px solid var(--bd);border-radius:12px;background:var(--bg);color:var(--tx);padding:0;box-shadow:var(--shadow);max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px)}
 dialog::backdrop{background:var(--ov)}
-.sheet{padding:20px 24px 20px;width:min(420px,100%)}
-.sheet.wide{width:min(600px,100%)}
+/* Fixed widths, not min(..., 100%): a percentage inside a fit-content dialog let long text stretch the dialog past the sheet. */
+.sheet{padding:20px 24px 20px;width:420px;max-width:100%}
+.sheet.wide{width:600px}
+.sheet.pair{width:400px}
+.qr{display:grid;place-items:center;width:232px;height:232px;margin:16px auto 8px;border:1px solid var(--bd);border-radius:12px;background:#fff;overflow:hidden}
+.qr svg{display:block;width:216px;height:216px}
+.qr.expired svg{opacity:.12}
+.qr .ph{padding:16px;text-align:center}
+#pair-left{text-align:center;margin:0 0 12px;font-variant-numeric:tabular-nums}
+@media(pointer:coarse),(max-width:699px){#pair{display:none}}
 .sheet h2{margin:0 0 12px;font:650 18px/24px var(--display)}
 .keycols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 24px}
 .keylist{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0 0 12px;align-items:center;align-content:start}
