@@ -91,6 +91,10 @@ import { initialWindowMetrics } from "react-native-safe-area-context";
 
 The icon is drawn with plain Views and the kit does not depend on `react-native-safe-area-context`; use it for `insets` only if your app already has it.
 
+### 0.4.0
+
+- After a send, the sheet shows the letter number under "Thanks, sent" (`strings.sentRef`, default `"Letter #{id}"`), so a tester can mention it to you; the sheet stays 3 s instead of 1.5 s when it has a number.
+
 ### 0.3.1
 
 - The "Feedback" text pill is now a compact round button, docked at the right edge near 62% of the window height instead of bottom-right, where it covered apps' primary buttons.

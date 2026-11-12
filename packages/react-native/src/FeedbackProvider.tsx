@@ -20,6 +20,8 @@ import {
 export type Strings = {
   button: string; title: string; include: string; placeholder: string; send: string; cancel: string;
   bug: string; idea: string; other: string; sent: string; failed: string;
+  /** Under "sent": the letter number, so the tester can mention it; `{id}` is replaced. */
+  sentRef: string;
   consent: string; consentOk: string;
   addPhoto: string; library: string; camera: string; removePhoto: string; screenshotPreview: string;
   cameraDenied: string; tooLarge: string; photoFailed: string;
@@ -27,7 +29,7 @@ export type Strings = {
 
 const DEFAULTS: Strings = {
   button: "Send feedback", title: "Send feedback", include: "Include screenshot", placeholder: "What happened, or what would help?",
-  send: "Send", cancel: "Cancel", bug: "Bug", idea: "Idea", other: "Other", sent: "Thanks, sent", failed: "Could not send. Try again.",
+  send: "Send", cancel: "Cancel", bug: "Bug", idea: "Idea", other: "Other", sent: "Thanks, sent", sentRef: "Letter #{id}", failed: "Could not send. Try again.",
   consent: "Your note, a screenshot of this screen and any photos you attach go to the team. Images are deleted after 90 days.", consentOk: "OK, continue",
   addPhoto: "Add photo", library: "Photo library", camera: "Camera", removePhoto: "Remove photo", screenshotPreview: "Screenshot preview",
   cameraDenied: "Camera access is off. Turn it on for this app in Settings to take a photo.",
@@ -95,6 +97,7 @@ export function FeedbackProvider(p: FeedbackProviderProps) {
   const dark = useColorScheme() === "dark";
   const c = dark ? DARK : LIGHT;
   const [step, setStep] = useState<Step>("closed");
+  const [sentId, setSentId] = useState<number | null>(null);
   const [hidden, setHidden] = useState(false);
   const [kind, setKind] = useState<Kind>("bug");
   const [text, setText] = useState("");
@@ -211,7 +214,7 @@ export function FeedbackProvider(p: FeedbackProviderProps) {
     }
     const r = await send(p.endpoint, p.projectKey, parts, sendTimeout(bytes), undefined, deviceId);
     setBusy(false);
-    if (r.ok) { clearAll(); setStep("sent"); setText(""); setTimeout(close, 1500); return; }
+    if (r.ok) { clearAll(); setSentId(r.id); setStep("sent"); setText(""); setTimeout(close, r.id ? 3000 : 1500); return; }
     if (thumb) dropFiles([thumb.uri]);
     setError(true); p.onError?.(r.error);
   };
@@ -240,7 +243,12 @@ export function FeedbackProvider(p: FeedbackProviderProps) {
                 <Btn c={c} label={t.cancel} onPress={close} />
               </>
             )}
-            {step === "sent" && <Text style={[s.title, { color: c.text }]} accessibilityLiveRegion="polite">{t.sent}</Text>}
+            {step === "sent" && (
+              <View accessibilityLiveRegion="polite">
+                <Text style={[s.title, { color: c.text }]}>{t.sent}</Text>
+                {sentId != null && <Text style={[s.body, { color: c.text }]} selectable>{t.sentRef.replace("{id}", String(sentId))}</Text>}
+              </View>
+            )}
             {step === "form" && (
               <>
                 <Text style={[s.title, { color: c.text }]}>{t.title}</Text>

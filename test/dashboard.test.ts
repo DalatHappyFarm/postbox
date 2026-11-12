@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appendItems, brief, briefMany, cleanToken, decodeHash, DEFAULT_STATE, encodeHash, firstLine, fitScale, groupByScreen, inView, knownLabels, labelError, listQuery, migrateToken, moreBadge, nextAfter, normalizeLabel,
-  progress, widgetSnippet, relativeTime, resizeDims, searchId, shortcutAction, stateQuery, STATUS_LABEL, STATUS_VIEWS, stepId, thumbPath, undoGroups, undoStack, viewCount, viewStatus, zoomAt, clampView } from "../public/lib.js";
+  progress, widgetSnippet, relativeTime, resizeDims, searchId, shortcutAction, stateQuery, stuckDays, STATUS_LABEL, STATUS_VIEWS, stepId, thumbPath, undoGroups, undoStack, viewCount, viewStatus, zoomAt, clampView } from "../public/lib.js";
 
 const item = { id: 7, project: "demo", kind: "bug", status: "new", text: "Crash on save", note: null, screen: "Home", app_version: "1.2", build: "34", platform: "ios", device: null, os: "18", url: "", created_at: "2026-10-16T10:00:00Z", attachment_count: 3, has_thumb: true, priority: null, labels: [] as string[] };
 
@@ -36,6 +36,7 @@ describe("dashboard helpers", () => {
     expect(shortcutAction("j")).toEqual({ action: "next", pendingG: false });
     expect(["r", "w", "d", "s", "u", "e", "z", "l", "x", "t", "n", "/", "?", " ", "k", "Enter"].map(a))
       .toEqual(["ready", "wont", "dup", "skip", "unread", "done", "undo", "label", "select", "triage", "new", "search", "help", "viewer", "prev", "open"]);
+    expect(["#", "Delete", "Backspace"].map(a)).toEqual(["delete", "delete", null]);
     expect(["1", "2", "3", "4", "5", "0"].map(a)).toEqual(["priority:0", "priority:1", "priority:2", "priority:3", null, null]);
     expect(shortcutAction("g")).toEqual({ action: null, pendingG: true });
     expect(shortcutAction("i", true)).toEqual({ action: "allMail", pendingG: false });
@@ -108,6 +109,12 @@ describe("dashboard helpers", () => {
     expect(ago(2 * 86400)).toBe("2 d ago");
     expect(ago(65 * 86400)).toBe("2 mo ago");
     expect(ago(400 * 86400)).toBe("1 y ago");
+  });
+  it("counts the days an In progress letter went without change", () => {
+    const now = Date.parse("2026-11-12T12:00:00Z");
+    const at = (h: number) => new Date(now - h * 3600_000).toISOString();
+    expect([[23, "doing"], [24, "doing"], [75, "doing"], [100, "ready"], [100, "done"]].map(([h, status]) => stuckDays({ status, updated_at: at(h as number) }, now))).toEqual([0, 1, 3, 0, 0]);
+    expect(stuckDays({ status: "doing" }, now)).toBe(0);
   });
   it("writes the brief with priority, labels, the decision and folded duplicates", () => {
     expect(brief(item)).toBe([

@@ -150,6 +150,7 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-c
 .done { display: grid; justify-items: center; gap: 10px; padding: 18px 0 8px; text-align: center; font-weight: 500; }
 .done .mark { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--ok); color: #fff; }
 .done svg { width: 24px; height: 24px; stroke-width: 2.4; }
+.done .ref { margin-top: -6px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; user-select: text; -webkit-user-select: text; }
 .panel.drag::after { content: attr(data-drop); position: absolute; inset: 8px; display: grid; place-items: center; padding: 16px; text-align: center;
   border: 2px dashed var(--focus); border-radius: 12px; background: var(--bg); font-weight: 600; pointer-events: none; }
 
@@ -465,7 +466,8 @@ export function start(script, queue = []) {
         onclick: () => { store.set(KEY.consent, "1"); S.step = "form"; render(text); ui.text.focus(); },
       }, t.consentOk));
     } else if (S.step === "done") {
-      body = h("div", { class: "body" }, h("div", { class: "done", role: "status" }, h("span", { class: "mark" }, icon("check")), t.sent));
+      body = h("div", { class: "body" }, h("div", { class: "done", role: "status" }, h("span", { class: "mark" }, icon("check")), t.sent,
+        S.sentId ? h("span", { class: "ref" }, t.sentRef.replace("{id}", String(S.sentId))) : null));
     } else {
       body = form(text);
     }
@@ -601,9 +603,11 @@ export function start(script, queue = []) {
         return;
       }
       store.del(draftKey);
+      // The letter number lets the tester mention it ("I sent #254"); a little longer on screen so it can be read.
+      S.sentId = await res.json().then((j) => (Number.isInteger(j?.id) ? j.id : null), () => null);
       S.step = "done";
       render("");
-      S.doneTimer = setTimeout(close, 1800);
+      S.doneTimer = setTimeout(close, S.sentId ? 3500 : 1800);
     } finally {
       if (run === S.run) busy(false);
     }
