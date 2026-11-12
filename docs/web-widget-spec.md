@@ -5,7 +5,7 @@ Installing it on a new site takes one command and one pasted line.
 
 This is slice 1.
 Slice 2 adds pointing at an element, console errors and failed requests in the brief, and allowed origins per mailbox.
-Allowed origins shipped first (2026-11-12, migration `0005_allowed_origins.sql`), see section 1.
+Allowed origins shipped first (2026-11-12, migration `0005_allowed_origins.sql`), see section 1; the other two follow the same day (migration `0007_page_context.sql`), see section 5b.
 
 ## 1. Install
 
@@ -65,6 +65,30 @@ Allowed origins shipped first (2026-11-12, migration `0005_allowed_origins.sql`)
 - `url`: no user name or password, no fragment unless it is a `#/` route, no `feedback` switch, and values of query parameters whose names look secret replaced by `redacted`; at most 2000 characters.
 - `device`: browser and version (Edge, Opera, Samsung Internet, Coc Coc, Chrome, Firefox, Safari; in-app browsers of Zalo, Facebook, Instagram and LINE are named), viewport and pixel ratio, for example `Chrome 130 (Zalo in-app) · 360x780 @3x`; `os` from the user agent (Windows and macOS versions are frozen there, so only the name).
 - `device_id`: 16 random bytes in localStorage (`crypto.getRandomValues`, which works on plain http, for example a site opened by LAN IP); storage that throws falls back to memory.
+
+## 5b. The page around the note (slice 2)
+
+The point is that an agent fixing a web letter cannot open the tester's console or see what they meant by "this button".
+
+**Recent errors and failed requests.**
+- Recorded only where the button shows (tester mode, staging hosts): on a live site's ordinary visitors the widget wraps nothing, so `fetch`, `XMLHttpRequest` and `console.error` stay native.
+- What: uncaught errors (message and `file:line:column`), unhandled rejections, `console.error`, elements whose resource did not load (`<img>`, `<script>`, `<link>`), and `fetch` or XHR requests that answered 400 or more or got no answer (aborts are not errors).
+- Requests to Postbox itself and everything during a screenshot (the library fetches images and fonts) are left out.
+- The newest 20 are kept in memory for the page's life; each message is cut to 300 characters and every URL is cleaned like the page address (secret query values redacted).
+- `fetch` returns the page's own promise chain: same answer, same rejection, and a rejection the page leaves unhandled still reports as one; XHR `open` is called with the page's own arguments, so a missing `async` stays asynchronous.
+- Sent as `meta.logs`, `[{kind, message, source?, method?, url?, status?, seconds_before}]` with `kind` one of `error`, `rejection`, `console`, `resource`, `request` and `status` 0 for no answer; seconds before sending, so the tester's clock never matters.
+- The panel says so in "Sent along" (`recent errors (6)`), and the consent text names the page's recent errors; the consent key moved to `v2`, so testers are asked once more.
+
+**Point at the problem.**
+- "Point at the problem" under the screenshot closes the panel (its state stays) and shows a bar at the top: "Click the part of the page with the problem", with Cancel; Esc cancels too.
+- Moving the pointer outlines the element under it in red with a short name (`button.pay`, `#cart`); a click or tap picks it, Enter picks the outlined one.
+- While pointing, presses on the page reach nothing there (no link opens, no form submits, no menu closes); touch is only stopped, not cancelled, so the page still scrolls and a tap still picks.
+- The panel comes back with the note as it was, a new screenshot with a red frame around the element, and "Pointed at button.pay "Pay"" with "Point again" and "Remove" (which takes a plain screenshot again).
+- Sent as `meta.element`: `selector` (tag names with `:nth-of-type`, from the nearest hand-written id, as short as stays unique; generated ids such as React's `:r1:` are skipped), `html` (the opening tag with `id`, `class`, `name`, `type`, `role`, `aria-label`, `title`, `alt`, `placeholder`, a cleaned `href` and `data-testid`, never a value) and `text` (its visible text, 120 characters, left out for form fields and masked parts).
+
+**Server, dashboard, CLI.**
+- `lib/context.ts` keeps only valid entries and cuts every string; a bad value is dropped, never a reason to refuse the letter. Stored as `feedback.logs` and `feedback.element` (jsonb, size-checked); returned on the letter (`GET /api/feedback/:id`), not in lists.
+- The dashboard shows "Pointed at" in the context table and "Page errors and failed requests (n)" under it (open when there are five or fewer); the copied brief and the CLI brief carry `element`, `element tag`, `element text` and a "Page errors and failed requests" section, one line per entry.
 
 ## 6. Robustness on someone else's page
 

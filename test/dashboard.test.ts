@@ -125,6 +125,9 @@ describe("dashboard helpers", () => {
     expect(full).toContain("- priority: urgent\n- labels: ux, login\n- screen: Home");
     expect(full).toContain("## Decision for the agent\n\nFix it, add a test\n\n## Agent's note\n\nFixed in 3ff22f9");
     expect(full).toContain("## Duplicates folded in\n\n- #9: Same crash");
+    const web = brief({ ...item, attachment_count: 0, element: { selector: "#pay", text: "Pay" }, logs: [{ kind: "request", method: "POST", url: "https://s.test/api", status: 502, message: "Bad Gateway", seconds_before: 4 }] });
+    expect(web).toContain("- element: #pay\n- element text: Pay");
+    expect(web).toContain("## Page errors and failed requests (1)\n\n- 4 s before sending, request: POST https://s.test/api: 502 Bad Gateway");
     expect(full).not.toContain("Photos:");
   });
   it("writes one document for several letters, a single brief for one", () => {

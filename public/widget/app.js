@@ -4,6 +4,7 @@
 import {
   STRINGS, DEFAULT_LIMITS, MAX_EDGE, JPEG_QUALITY, THUMB_EDGE, THUMB_QUALITY,
   pickLang, readLimits, showButton, testerFlag, initialFab, snapFab, isDrag, cleanUrl, normalizeScreen, describe, buildMeta, errorKey, sendTimeout, slotsLeft, resizeDims,
+  errText, pushLog, logsForSend, cssPath, openingTag, shortName,
 } from "./lib.js";
 
 const KINDS = ["bug", "idea", "other"];
@@ -11,7 +12,7 @@ const MAX_THUMB_BYTES = 64 * 1024;
 const CAPTURE_TIMEOUT_MS = 15_000;
 const SHIFT = "data-postbox-shift";
 const MASK = 'input[type="password"], [autocomplete^="cc-"], [data-postbox-mask]';
-const KEY = { consent: "postbox.consent.v1", device: "postbox.device-id.v1", tester: "postbox.tester.v1", draft: "postbox.draft.v1:", fab: "postbox.button-position.v1" };
+const KEY = { consent: "postbox.consent.v2", device: "postbox.device-id.v1", tester: "postbox.tester.v1", draft: "postbox.draft.v1:", fab: "postbox.button-position.v1" };
 
 // localStorage can be missing or throw (private mode, blocked site data): fall back to memory for this page.
 const memory = new Map();
@@ -50,6 +51,7 @@ const ICONS = {
   close: "M6.5 6.5l11 11M17.5 6.5l-11 11",
   plus: "M12 5.5v13M5.5 12h13",
   check: "M5.5 12.5l4 4 9-9.5",
+  target: "M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M12 6.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0-11z",
 };
 function icon(name) {
   const NS = "http://www.w3.org/2000/svg";
@@ -143,6 +145,22 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-c
 @media (pointer: coarse) { .hint { display: none; } }
 
 .ctx { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.point { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; min-width: 0; }
+.pointed { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 100%; font-size: 13px; overflow-wrap: anywhere; }
+.pointed svg { width: 16px; height: 16px; color: #e5484d; }
+.pointed b { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.link { border: 0; background: none; padding: 2px 0; color: var(--focus); font-size: 13px; font-weight: 500; }
+.link:hover { text-decoration: underline; }
+.hl { position: fixed; z-index: 2147483646; pointer-events: none; border: 2px solid #e5484d; border-radius: 4px; background: rgba(229, 72, 77, .1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .8); transition: left .06s, top .06s, width .06s, height .06s; }
+.hl-label { position: absolute; left: -2px; bottom: 100%; margin-bottom: 4px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 6px; border-radius: 4px; background: #e5484d; color: #fff; font: 600 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.hl.low .hl-label { bottom: auto; top: 100%; margin: 4px 0 0; }
+.pickbar { position: fixed; z-index: 2147483647; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 24px); padding: 6px 6px 6px 16px; border-radius: 999px;
+  background: var(--fab); color: var(--fab-fg); box-shadow: var(--shadow); font: 500 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.pickbar button { flex: none; border: 0; border-radius: 999px; padding: 6px 12px; background: color-mix(in srgb, currentColor 16%, transparent); color: inherit; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .hl { transition: none; } }
 .err { color: var(--danger); font-size: 13px; }
 .primary { width: 100%; height: 44px; border: 0; border-radius: 10px; background: var(--fg); color: var(--bg); font-size: 15px; font-weight: 600; }
 .primary:hover:not(:disabled) { opacity: .9; }
@@ -236,8 +254,11 @@ const dataImagesAllowed = () => (dataImages ??= new Promise((res) => {
   img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 }));
 
-/** The visible part of the page as a JPEG, without the widget; secrets are blanked in the clone and covered in the image. */
-async function capture(host) {
+/**
+ * The visible part of the page as a JPEG, without the widget; secrets are blanked in the clone and covered in the image.
+ * `frame` (viewport px) is drawn as a red box: the element the tester pointed at.
+ */
+async function capture(host, frame = null) {
   const de = document.documentElement;
   const W = de.clientWidth || innerWidth, H = de.clientHeight || innerHeight;
   const sx = scrollX, sy = scrollY;
@@ -283,10 +304,72 @@ async function capture(host) {
     const k = canvas.width / W;
     g.fillStyle = "#8e8e93";
     for (const r of masks) g.fillRect(Math.floor(r.left * k), Math.floor(r.top * k), Math.ceil(r.width * k), Math.ceil(r.height * k));
+    if (frame) {
+      const pad = 4, lw = Math.max(2, Math.round(3 * k));
+      g.strokeStyle = "#e5484d";
+      g.lineWidth = lw;
+      g.strokeRect((frame.left - pad) * k, (frame.top - pad) * k, (frame.width + 2 * pad) * k, (frame.height + 2 * pad) * k);
+    }
     return await encode(out, JPEG_QUALITY);
   } finally {
     for (const n of marked) n.removeAttribute(SHIFT);
   }
+}
+
+// ---------- the page's recent errors and failed requests ----------
+
+/**
+ * Records uncaught errors, unhandled rejections, console.error, resources that did not load and requests that failed
+ * (fetch and XMLHttpRequest, status 400 and up or no answer), newest LOG_MAX kept, URLs cleaned like the page address.
+ * Started only where the button shows (tester mode, staging hosts), so ordinary visitors of a live site run none of it.
+ * Requests to Postbox itself and anything during a screenshot (the library fetches images and fonts) are left out.
+ */
+function recorder(postbox) {
+  const list = [];
+  let quiet = 0;
+  const add = (e) => { if (!quiet) pushLog(list, { ...e, at: Date.now() }); };
+  const abs = (u) => { try { return cleanUrl(new URL(String(u), location.href).href) ?? undefined; } catch { return undefined; } };
+  const mine = (u) => { try { return new URL(String(u), location.href).origin === postbox; } catch { return false; } };
+  addEventListener("error", (e) => {
+    if (e instanceof ErrorEvent) add({ kind: "error", message: e.message || errText(e.error), source: e.filename ? `${abs(e.filename)}:${e.lineno}:${e.colno}` : undefined });
+    else if (e.target instanceof Element) {
+      const u = e.target.currentSrc || e.target.src || e.target.href;
+      if (u && !mine(u)) add({ kind: "resource", message: `<${e.target.tagName.toLowerCase()}> did not load`, url: abs(u) });
+    }
+  }, true);
+  addEventListener("unhandledrejection", (e) => add({ kind: "rejection", message: errText(e.reason) }));
+  const consoleError = console.error;
+  console.error = function (...a) { add({ kind: "console", message: a.map(errText).join(" ") }); return consoleError.apply(this, a); };
+  const f = globalThis.fetch;
+  if (typeof f === "function") {
+    globalThis.fetch = function (input, init) {
+      const url = input instanceof Request ? input.url : String(input);
+      const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const p = f.call(globalThis, input, init);
+      if (mine(url)) return p;
+      // The page gets the same answer or the same rejection; a rejection it leaves unhandled still reports as one.
+      return p.then(
+        (r) => { if (!r.ok) add({ kind: "request", method, url: abs(r.url || url), status: r.status, message: r.statusText || "" }); return r; },
+        (err) => { if (err?.name !== "AbortError") add({ kind: "request", method, url: abs(url), status: 0, message: errText(err) }); throw err; });
+    };
+  }
+  const X = globalThis.XMLHttpRequest?.prototype;
+  if (X) {
+    const seen = new WeakMap();
+    const open = X.open, send = X.send;
+    // apply(arguments): passing an explicit undefined for `async` would make the request synchronous.
+    X.open = function (method, url) { seen.set(this, { method: String(method).toUpperCase(), url: String(url) }); return open.apply(this, arguments); };
+    X.send = function () {
+      const m = seen.get(this);
+      if (m && !mine(m.url)) {
+        this.addEventListener("load", () => { if (this.status >= 400) add({ kind: "request", method: m.method, url: abs(this.responseURL || m.url), status: this.status, message: this.statusText || "" }); });
+        this.addEventListener("error", () => add({ kind: "request", method: m.method, url: abs(m.url), status: 0, message: "network error" }));
+        this.addEventListener("timeout", () => add({ kind: "request", method: m.method, url: abs(m.url), status: 0, message: "timeout" }));
+      }
+      return send.apply(this, arguments);
+    };
+  }
+  return { list, quietly: async (task) => { quiet++; try { return await task(); } finally { quiet--; } } };
 }
 
 // ---------- widget ----------
@@ -321,6 +404,7 @@ export function start(script, queue = []) {
     onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0 || !dragged) open(); },
   }, icon("bubble"));
   fab.hidden = !showButton(d.button || "auto", location.hostname, tester);
+  const rec = fab.hidden ? null : recorder(origin);
   const dlg = h("dialog", { class: "panel", "aria-labelledby": "pb-title", "data-drop": t.drop });
   root.append(fab, dlg);
   // A press, focus move, key or scroll inside the widget never reaches the page: its open dialogs, sheets and popovers
@@ -422,13 +506,8 @@ export function start(script, queue = []) {
     S.ctx = context();
     const draft = readDraft();
     S.kind = KINDS.includes(kind) ? kind : KINDS.includes(draft.kind) ? draft.kind : "bug";
-    S.include = true; S.images = []; S.busy = false;
-    S.shot = "pending";
-    // Measured before the panel opens; the clone itself skips the widget.
-    S.shotTask = capture(host).then(
-      (b) => { if (run === S.run) { S.shot = b; S.shotUrl = URL.createObjectURL(b); } },
-      (e) => { if (run === S.run) S.shot = "failed"; console.warn("Postbox: screenshot failed.", e); },
-    ).then(() => { if (run === S.run) { paintShot(); paintTiles(); } });
+    S.include = true; S.images = []; S.busy = false; S.element = null;
+    shoot(); // measured before the panel opens; the clone itself skips the widget
     loadLimits();
     S.step = store.get(KEY.consent) === "1" ? "form" : "consent";
     render(draft.text || "");
@@ -436,8 +515,21 @@ export function start(script, queue = []) {
     dlg.showModal();
   }
 
+  /** Take the screenshot (again), with a red frame around the pointed element when there is one. */
+  function shoot(frame = null) {
+    const run = S.run;
+    if (S.shotUrl) URL.revokeObjectURL(S.shotUrl);
+    S.shot = "pending"; S.shotUrl = null;
+    const task = () => capture(host, frame);
+    S.shotTask = (rec ? rec.quietly(task) : task()).then(
+      (b) => { if (run === S.run) { S.shot = b; S.shotUrl = URL.createObjectURL(b); } },
+      (e) => { if (run === S.run) S.shot = "failed"; console.warn("Postbox: screenshot failed.", e); },
+    ).then(() => { if (run === S.run) { paintShot(); paintTiles(); } });
+  }
+
   function close() { if (dlg.open) dlg.close(); }
   dlg.addEventListener("close", () => {
+    if (S.picking) return; // closed only while the tester points at the page; everything stays
     fab.classList.remove("away");
     S.run++;
     clearTimeout(S.doneTimer);
@@ -487,18 +579,113 @@ export function start(script, queue = []) {
     ui.includeRow = h("label", { class: "check" }, ui.include, t.include);
     ui.tiles = h("div", { class: "tiles" });
     ui.file = h("input", { type: "file", accept: "image/*", multiple: true, hidden: true, onchange: () => { addFiles(ui.file.files); ui.file.value = ""; } });
+    ui.point = h("div", { class: "point" });
     ui.err = h("p", { class: "err", role: "alert", hidden: true });
     ui.send = h("button", { class: "primary", type: "submit" }, t.send);
     const c = S.ctx;
     const f = h("form", { class: "body", novalidate: true, onsubmit: (e) => { e.preventDefault(); send(); } },
       h("fieldset", { class: "kinds" }, h("legend", { class: "sr" }, t.kindLabel), KINDS.map((k, i) => h("label", {}, ui.kinds[i], h("span", {}, t.kinds[k])))),
       h("label", { class: "sr", htmlFor: "pb-text" }, t.textLabel), ui.text,
-      ui.shot, ui.includeRow, ui.tiles, ui.file,
-      h("p", { class: "ctx" }, `${t.context}: ${[c.screen, c.device].filter(Boolean).join(" · ")}`),
+      ui.shot, ui.includeRow, ui.point, ui.tiles, ui.file,
+      h("p", { class: "ctx" }, `${t.context}: ${[c.screen, c.device, rec?.list.length ? t.logs.replace("{n}", String(rec.list.length)) : null].filter(Boolean).join(" · ")}`),
       ui.err, ui.send);
     paintShot();
     paintTiles();
+    paintPoint();
     return f;
+  }
+
+  // ---------- point at the part of the page with the problem ----------
+
+  function paintPoint() {
+    if (!ui.point) return;
+    const e = S.element;
+    const quote = e?.info.text ? ` "${e.info.text.length > 40 ? `${e.info.text.slice(0, 39)}…` : e.info.text}"` : "";
+    ui.point.replaceChildren(...(e
+      ? [h("span", { class: "pointed" }, icon("target"), h("span", {}, `${t.pointed} `, h("b", {}, e.name), quote)),
+        h("button", { type: "button", class: "link", onclick: pointAt }, t.repoint),
+        h("button", { type: "button", class: "link", onclick: unpoint }, t.unpoint)]
+      : [h("button", { type: "button", class: "add", onclick: pointAt }, icon("target"), t.point)]));
+  }
+
+  /** Selector, opening tag and visible text; never a field's value, nothing from a masked part. */
+  function elementInfo(el) {
+    const hidden = el.closest(MASK) || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+    const text = hidden ? "" : (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    const attrs = [...el.attributes].map((a) => {
+      if (a.name !== "href") return [a.name, a.value];
+      try { return [a.name, cleanUrl(new URL(a.value, location.href).href) ?? ""]; } catch { return [a.name, ""]; }
+    });
+    const count = (sel) => { try { return document.querySelectorAll(sel).length; } catch { return 0; } };
+    return { selector: cssPath(el, count), html: openingTag(el.tagName, attrs), ...(text ? { text } : {}) };
+  }
+
+  const hl = h("div", { class: "hl", hidden: true }, h("span", { class: "hl-label" }));
+  const bar = h("div", { class: "pickbar", hidden: true, role: "status" }, h("span", {}, t.pointHelp), h("button", { type: "button", onclick: () => endPick(null) }, t.pointCancel));
+  root.append(hl, bar);
+  /** @type {{ resolve: (el: Element | null) => void, target: Element | null } | null} */
+  let picking = null;
+  const under = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    return el && el !== host && el !== document.documentElement && el !== document.body ? el : null;
+  };
+  const showHl = (el) => {
+    if (!picking) return;
+    picking.target = el;
+    hl.hidden = !el;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    for (const [k, v] of [["left", r.left], ["top", r.top], ["width", r.width], ["height", r.height]]) hl.style.setProperty(k, `${v}px`);
+    hl.classList.toggle("low", r.top < 28); // the label goes under a box at the top edge
+    hl.firstChild.textContent = shortName(el.tagName, el.id, [...el.classList]);
+  };
+  const outside = (e) => !e.composedPath().includes(host);
+  // While pointing, presses on the page do nothing there: no link opens, no menu closes. Touch events are only stopped
+  // (not cancelled), so the page still scrolls and a tap still makes the click that picks.
+  const swallow = (e) => { if (!picking || !outside(e)) return; e.stopImmediatePropagation(); if (!e.type.startsWith("touch")) e.preventDefault(); };
+  const onMove = (e) => { if (picking && outside(e) && e.pointerType !== "touch") showHl(under(e.clientX, e.clientY)); };
+  const onClick = (e) => { if (!picking || !outside(e)) return; swallow(e); const el = under(e.clientX, e.clientY); if (el) endPick(el); };
+  const onKey = (e) => {
+    if (!picking) return;
+    if (e.key === "Escape") { swallow(e); endPick(null); } else if (e.key === "Enter" && picking.target) { swallow(e); endPick(picking.target); }
+  };
+  const onScroll = () => { if (picking?.target) showHl(picking.target); };
+  const STOP = ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick", "contextmenu", "auxclick", "submit"];
+  const listen = (on) => {
+    const m = on ? addEventListener : removeEventListener;
+    m("pointermove", onMove, true); m("click", onClick, true); m("keydown", onKey, true); m("scroll", onScroll, true);
+    for (const type of STOP) m(type, swallow, true);
+  };
+  function pick() {
+    return new Promise((resolve) => { picking = { resolve, target: null }; listen(true); bar.hidden = false; });
+  }
+  function endPick(el) {
+    if (!picking) return;
+    const { resolve } = picking;
+    picking = null; listen(false); bar.hidden = hl.hidden = true;
+    resolve(el);
+  }
+
+  async function pointAt() {
+    if (S.busy || picking) return;
+    saveDraft();
+    S.picking = true;
+    dlg.close();
+    const el = await pick();
+    S.picking = false;
+    if (el) {
+      S.element = { info: elementInfo(el), name: shortName(el.tagName, el.id, [...el.classList]) };
+      shoot(el.getBoundingClientRect());
+    }
+    dlg.showModal();
+    paintShot(); paintTiles(); paintPoint();
+    ui.point?.querySelector("button")?.focus();
+  }
+  function unpoint() {
+    S.element = null;
+    shoot();
+    paintShot(); paintPoint();
+    ui.point?.querySelector("button")?.focus();
   }
 
   function paintShot() {
@@ -576,7 +763,10 @@ export function start(script, queue = []) {
       const bytes = blobs.reduce((n, b) => n + b.size, 0);
       if (blobs.length > l.max_attachments || bytes > l.max_total_bytes) { setError(t.errors.tooLarge); return; }
       const body = new FormData();
-      body.set("meta", JSON.stringify(buildMeta({ ...S.ctx, kind: S.kind, text }, l.max_text)));
+      const meta = buildMeta({ ...S.ctx, kind: S.kind, text }, l.max_text);
+      if (rec?.list.length) meta.logs = logsForSend(rec.list, Date.now());
+      if (S.element) meta.element = S.element.info;
+      body.set("meta", JSON.stringify(meta));
       if (shot) body.append("screenshot", shot, "screenshot.jpg");
       S.images.forEach((i, n) => body.append("photo", i.blob, `photo-${n + 1}.jpg`));
       if (blobs.length) {

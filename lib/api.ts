@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { stripJpeg } from "./jpeg.ts";
 import { readLimits, type Limits } from "./limits.ts";
+import { cleanElement, cleanLogs } from "./context.ts";
 import { notifyNewLetter } from "./notify.ts";
 import { MAX_ORIGINS, normalizeOrigin, originAllowed } from "./origins.ts";
 
@@ -247,6 +248,8 @@ async function parseLetter(req: Request, env: Env, L: Limits, bad: (status: numb
     thumb = t;
   }
   if (imgs.length && !env.SHOTS) return bad(500, "misconfigured");
+  f.logs = cleanLogs(b.logs);
+  f.element = cleanElement(b.element);
   return { b, text, kind, f, imgs, thumb };
 }
 
@@ -254,8 +257,9 @@ async function parseLetter(req: Request, env: Env, L: Limits, bad: (status: numb
 async function saveLetter(env: Env, sql: Sql, project: Row, p: Letter, source: "app" | "web", reporter: string | null): Promise<number | null> {
   const { b, text, kind, f, imgs, thumb } = p;
   const [row] = await sql`
-    insert into feedback (project_id, kind, text, screen, app_version, build, platform, device, os, locale, url, reporter_hash, source)
-    values (${project.id}, ${kind}, ${text}, ${f.screen}, ${f.app_version}, ${f.build}, ${b.platform ?? null}, ${f.device}, ${f.os}, ${f.locale}, ${f.url}, ${reporter}, ${source})
+    insert into feedback (project_id, kind, text, screen, app_version, build, platform, device, os, locale, url, reporter_hash, source, logs, element)
+    values (${project.id}, ${kind}, ${text}, ${f.screen}, ${f.app_version}, ${f.build}, ${b.platform ?? null}, ${f.device}, ${f.os}, ${f.locale}, ${f.url}, ${reporter}, ${source},
+      ${f.logs ? JSON.stringify(f.logs) : null}::jsonb, ${f.element ? JSON.stringify(f.element) : null}::jsonb)
     returning id::int as id`;
 
   if (imgs.length) {
@@ -361,7 +365,7 @@ async function list(url: URL, sql: Sql) {
 }
 
 async function fetchOne(id: number, sql: Sql) {
-  const [row] = await sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.agent_note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at,
+  const [row] = await sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.agent_note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at, f.logs, f.element,
     coalesce((select json_agg(json_build_object('position', a.position, 'kind', a.kind, 'bytes', a.bytes, 'content_type', a.content_type) order by a.position) from attachments a where a.feedback_id = f.id), '[]'::json) as attachments,
     coalesce((select json_agg(json_build_object('id', d.id::int, 'text', left(split_part(d.text, E'\n', 1), 200), 'attachment_count', d.attachment_count::int) order by d.id) from feedback d where d.duplicate_of = f.id), '[]'::json) as duplicates
     from feedback f join projects p on p.id = f.project_id where f.id = ${id}`;

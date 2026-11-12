@@ -242,6 +242,7 @@ export function brief(i) {
     ...row("build", buildLabel(i)),
     ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("locale", i.locale), ...row("url", i.url),
     ...row("created", i.created_at),
+    ...row("element", i.element?.selector), ...row("element tag", i.element?.html), ...row("element text", i.element?.text),
     ...(i.attachment_count ? [`Photos: ${i.attachment_count}, run postbox show ${i.id} to download them`] : []),
     "",
     "## Text",
@@ -249,9 +250,19 @@ export function brief(i) {
     i.text,
     ...(i.note ? ["", "## Decision for the agent", "", i.note] : []),
     ...(i.agent_note ? ["", "## Agent's note", "", i.agent_note] : []),
+    ...(i.logs?.length ? ["", `## Page errors and failed requests (${i.logs.length})`, "", ...i.logs.map((e) => `- ${logLine(e)}`)] : []),
     ...(i.duplicates?.length ? ["", "## Duplicates folded in", "", ...i.duplicates.map((d) => `- #${d.id}: ${d.text}`)] : []),
   ].join("\n");
 }
+
+/** What happened, for an entry of `logs` (the page's recent errors and failed requests, from the web widget). */
+export function logWhat(e) {
+  return e.kind === "request"
+    ? `${e.method || "GET"} ${e.url || ""}: ${e.status ? `${e.status}${e.message ? ` ${e.message}` : ""}` : `no answer${e.message ? ` (${e.message})` : ""}`}`
+    : e.kind === "resource" ? `${e.message}${e.url ? `: ${e.url}` : ""}`
+    : `${e.message}${e.source ? ` at ${e.source}` : ""}`;
+}
+export const logLine = (e) => `${e.seconds_before} s before sending, ${e.kind}: ${logWhat(e)}`;
 
 /** One Markdown document for several letters, in the given order. */
 export function briefMany(items) {

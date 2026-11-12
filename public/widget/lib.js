@@ -190,6 +190,67 @@ export function buildMeta(f, maxText = DEFAULT_LIMITS.max_text) {
   return meta;
 }
 
+// ---- the page around the note: recent errors and failed requests, and the element the tester pointed at ----
+
+export const LOG_MAX = 20;
+const LOG_TEXT = 300;
+
+/** One readable line for anything thrown, rejected or logged. */
+export function errText(v) {
+  if (v && typeof v === "object" && "message" in v) return `${v.name || "Error"}: ${v.message}`.slice(0, LOG_TEXT);
+  if (typeof v === "string") return v.slice(0, LOG_TEXT);
+  try { return String(JSON.stringify(v) ?? v).slice(0, LOG_TEXT); } catch { return String(v).slice(0, LOG_TEXT); }
+}
+
+/** Keep the newest LOG_MAX entries. */
+export function pushLog(list, entry, max = LOG_MAX) {
+  list.push(entry);
+  if (list.length > max) list.splice(0, list.length - max);
+  return list;
+}
+
+/** Entries as sent: `at` (ms) becomes seconds before sending, so the server never depends on the tester's clock. */
+export function logsForSend(list, now) {
+  return list.map(({ at, ...e }) => ({ ...e, seconds_before: Math.max(0, Math.round((now - at) / 1000)) }));
+}
+
+const PLAIN_ID = /^[A-Za-z][\w-]{0,63}$/;
+/**
+ * A CSS selector for an element: tag names with :nth-of-type where siblings share a tag, starting from the nearest
+ * ancestor with a hand-written id; it stops as soon as `count(selector)` finds exactly one match.
+ * Generated ids (React's :r1:, long numbers) are skipped, they change on every render.
+ * @param {{ tagName: string, id?: string, parentElement: any, children?: any }} el
+ * @param {(selector: string) => number} count
+ */
+export function cssPath(el, count) {
+  const parts = [];
+  for (let n = el; n && n.tagName && n.tagName.toUpperCase() !== "HTML"; n = n.parentElement) {
+    const tag = n.tagName.toLowerCase();
+    if (n.id && PLAIN_ID.test(n.id) && !/\d{4,}/.test(n.id)) parts.unshift(`#${n.id}`);
+    else {
+      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.tagName === n.tagName) : [n];
+      parts.unshift(same.length > 1 ? `${tag}:nth-of-type(${same.indexOf(n) + 1})` : tag);
+    }
+    const sel = parts.join(" > ");
+    if (count(sel) === 1) return sel;
+  }
+  return parts.join(" > ");
+}
+
+const SAFE_ATTRS = ["id", "class", "name", "type", "role", "aria-label", "title", "alt", "placeholder", "href", "data-testid"];
+/** The opening tag with a few telling attributes and never a value, for the agent to find the code: `<button class="pay" type="submit">`. */
+export function openingTag(tag, attrs) {
+  const keep = attrs.filter(([k, v]) => SAFE_ATTRS.includes(k) && typeof v === "string" && v.trim())
+    .map(([k, v]) => `${k}="${v.trim().replace(/\s+/g, " ").slice(0, 80).replace(/"/g, "&quot;")}"`);
+  return `<${[tag.toLowerCase(), ...keep].join(" ")}>`.slice(0, 500);
+}
+
+/** Short name of an element for the picker label: `button.pay`, `#cart`. */
+export function shortName(tag, id, classes = []) {
+  if (id && PLAIN_ID.test(id)) return `#${id}`;
+  return [tag.toLowerCase(), ...classes.filter((c) => /^[A-Za-z_-][\w-]*$/.test(c)).slice(0, 2)].join(".").slice(0, 60);
+}
+
 /** Which message to show for a failed send: status 0 is a network failure or timeout. */
 export function errorKey(status, error) {
   if (status === 0) return "offline";
@@ -206,7 +267,7 @@ export function errorKey(status, error) {
 export const STRINGS = {
   en: {
     button: "Send feedback", move: "drag to move", title: "Send feedback", close: "Close",
-    consent: "Your note, a screenshot of this page and any images you add go to the team that builds this site. Images are deleted after 90 days.",
+    consent: "Your note, a screenshot of this page, any images you add and the page's recent errors go to the team that builds this site. Images are deleted after 90 days.",
     consentOk: "OK, continue",
     kinds: { bug: "Bug", idea: "Idea", other: "Other" }, kindLabel: "Kind",
     placeholder: "What happened, or what would help?", textLabel: "Your note",
@@ -214,7 +275,8 @@ export const STRINGS = {
     shotFailed: "Could not capture this page. Paste or add a screenshot instead.",
     addImage: "Add image", paste: "or paste", remove: "Remove image", screenshot: "Screenshot of this page", image: "Image",
     drop: "Drop images to add them", full: "No more images can be added.",
-    context: "Sent along",
+    context: "Sent along", logs: "recent errors\u00a0({n})",
+    point: "Point at the problem", pointHelp: "Click the part of the page with the problem", pointCancel: "Cancel", pointed: "Pointed at", repoint: "Point again", unpoint: "Remove",
     send: "Send", sending: "Sending…", sent: "Sent. Thank you!", sentRef: "Letter #{id}",
     errors: {
       empty: "Write a few words first.", offline: "Could not reach the server. Check the connection and try again.",
@@ -225,7 +287,7 @@ export const STRINGS = {
   },
   vi: {
     button: "Gửi góp ý", move: "kéo để di chuyển", title: "Gửi góp ý", close: "Đóng",
-    consent: "Ghi chú, ảnh chụp trang này và ảnh bạn thêm sẽ được gửi cho đội làm website. Ảnh được xoá sau 90 ngày.",
+    consent: "Ghi chú, ảnh chụp trang này, ảnh bạn thêm và các lỗi gần đây của trang sẽ được gửi cho đội làm website. Ảnh được xoá sau 90 ngày.",
     consentOk: "Đồng ý, tiếp tục",
     kinds: { bug: "Lỗi", idea: "Ý tưởng", other: "Khác" }, kindLabel: "Loại",
     placeholder: "Có gì chưa ổn, hoặc điều gì sẽ giúp bạn?", textLabel: "Ghi chú của bạn",
@@ -233,7 +295,8 @@ export const STRINGS = {
     shotFailed: "Không chụp được trang này. Hãy dán hoặc thêm ảnh chụp.",
     addImage: "Thêm ảnh", paste: "hoặc dán", remove: "Xoá ảnh", screenshot: "Ảnh chụp trang này", image: "Ảnh",
     drop: "Thả ảnh vào đây để thêm", full: "Đã đủ số ảnh tối đa.",
-    context: "Gửi kèm",
+    context: "Gửi kèm", logs: "lỗi gần đây\u00a0({n})",
+    point: "Chỉ vào chỗ có vấn đề", pointHelp: "Bấm vào chỗ có vấn đề trên trang", pointCancel: "Huỷ", pointed: "Đã chỉ vào", repoint: "Chỉ lại", unpoint: "Bỏ",
     send: "Gửi", sending: "Đang gửi…", sent: "Đã gửi. Cảm ơn bạn!", sentRef: "Mã thư #{id}",
     errors: {
       empty: "Hãy viết vài chữ trước đã.", offline: "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",

@@ -229,6 +229,23 @@ describe("postbox", () => {
     expect(JSON.parse(back?.init.body as string)).toEqual({ status: "ready" });
   });
 
+  it("the brief names the pointed element and lists the page's errors and failed requests", async () => {
+    const logs = [
+      { kind: "error", message: "TypeError: cart is undefined", source: "https://shop.test/app.js:12:5", seconds_before: 8 },
+      { kind: "request", message: "Internal Server Error", method: "POST", url: "https://shop.test/api/cart", status: 500, seconds_before: 3 },
+      { kind: "request", message: "TypeError: Failed to fetch", method: "GET", url: "https://cdn.test/x.json", status: 0, seconds_before: 2 },
+      { kind: "resource", message: "<img> did not load", url: "https://shop.test/hero.jpg", seconds_before: 1 },
+    ];
+    const h = harness(() => Response.json({ ...item, attachments: [], logs, element: { selector: "#pay", html: '<button id="pay">', text: "Pay" } }));
+    await run(["show", "42"], h.d);
+    expect(h.out[0]).toContain('- element: #pay\n- element tag: <button id="pay">\n- element text: Pay');
+    expect(h.out[0]).toContain(["## Page errors and failed requests (4)", "",
+      "- 8 s before sending, error: TypeError: cart is undefined at https://shop.test/app.js:12:5",
+      "- 3 s before sending, request: POST https://shop.test/api/cart: 500 Internal Server Error",
+      "- 2 s before sending, request: GET https://cdn.test/x.json: no answer (TypeError: Failed to fetch)",
+      "- 1 s before sending, resource: <img> did not load: https://shop.test/hero.jpg"].join("\n"));
+  });
+
   it("the brief shows the agent's earlier note after the owner's decision", async () => {
     const h = harness(() => Response.json({ ...item, attachments: [], note: "Make it save", agent_note: "Tried a fix in 3ff22f9; toast still missing on iOS" }));
     await run(["show", "42"], h.d);

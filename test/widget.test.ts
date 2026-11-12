@@ -1,5 +1,5 @@
 import { describe as group, expect, it } from "vitest";
-import { buildMeta, cleanUrl, DEFAULT_LIMITS, describe, errorKey, FAB_REST, initialFab, isDrag, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, snapFab, STRINGS, testerFlag } from "../public/widget/lib.js";
+import { buildMeta, cleanUrl, cssPath, DEFAULT_LIMITS, describe, errorKey, errText, logsForSend, openingTag, pushLog, shortName, FAB_REST, initialFab, isDrag, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, snapFab, STRINGS, testerFlag } from "../public/widget/lib.js";
 
 const UA = {
   macChrome: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -127,5 +127,42 @@ group("web widget helpers", () => {
     expect([slotsLeft(4, true, 0), slotsLeft(4, false, 0), slotsLeft(4, true, 3), slotsLeft(4, true, 5)]).toEqual([3, 4, 0, 0]);
     expect([sendTimeout(0), sendTimeout(1), sendTimeout(3 * 1024 * 1024), sendTimeout(100 * 1024 * 1024)]).toEqual([20_000, 30_000, 50_000, 90_000]);
     expect([resizeDims(3200, 1800), resizeDims(800, 600), resizeDims(1000, 4000, 320)]).toEqual([{ w: 1600, h: 900 }, { w: 800, h: 600 }, { w: 80, h: 320 }]);
+  });
+
+  it("records page errors as short lines, newest 20, with seconds before sending", () => {
+    expect(errText(new TypeError("cart is undefined"))).toBe("TypeError: cart is undefined");
+    expect(errText({ code: 7 })).toBe('{"code":7}');
+    expect(errText("x".repeat(400))).toHaveLength(300);
+    const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
+    expect(errText(cyclic)).toBe("[object Object]");
+    const list: { at: number; n: number }[] = [];
+    for (let n = 0; n < 25; n++) pushLog(list, { at: 1000 + n * 1000, n });
+    expect(list.map((e) => e.n)).toEqual(Array.from({ length: 20 }, (_, n) => n + 5));
+    expect(logsForSend([{ at: 1000, kind: "error", message: "m" }], 13_600)).toEqual([{ kind: "error", message: "m", seconds_before: 13 }]);
+  });
+
+  it("builds the shortest unique selector from tags, :nth-of-type and hand-written ids", () => {
+    type N = { tagName: string; id?: string; parentElement: N | null; children: N[] };
+    const node = (tagName: string, parent: N | null, id = ""): N => { const n: N = { tagName, id, parentElement: parent, children: [] }; parent?.children.push(n); return n; };
+    const html = node("HTML", null), body = node("BODY", html), main = node("MAIN", body, "app");
+    const sec1 = node("SECTION", main), sec2 = node("SECTION", main);
+    node("BUTTON", sec1); const pay = node("BUTTON", sec2); const pay2 = node("BUTTON", sec2);
+    const gen = node("DIV", body, ":r1:"), inGen = node("SPAN", gen);
+    const counts: Record<string, number> = { button: 3, "button:nth-of-type(1)": 2, "section:nth-of-type(2) > button:nth-of-type(1)": 1, "button:nth-of-type(2)": 1, span: 1 };
+    const count = (s: string) => counts[s] ?? 0;
+    expect(cssPath(pay, count)).toBe("section:nth-of-type(2) > button:nth-of-type(1)");
+    expect(cssPath(pay2, count)).toBe("button:nth-of-type(2)");
+    expect(cssPath(inGen, count)).toBe("span");
+    expect(cssPath(pay, () => 2)).toBe("body > #app > section:nth-of-type(2) > button:nth-of-type(1)"); // never unique: the whole path
+    expect(cssPath(inGen, () => 2)).toBe("body > div > span"); // a generated id (:r1:) is not used
+  });
+
+  it("describes the element with safe attributes only, never a value", () => {
+    expect(openingTag("BUTTON", [["class", "btn  primary"], ["value", "4111 1111"], ["type", "submit"], ["onclick", "pay()"], ["data-testid", "pay"], ["aria-label", 'say "hi"']]))
+      .toBe('<button class="btn primary" type="submit" data-testid="pay" aria-label="say &quot;hi&quot;">');
+    expect(openingTag("INPUT", [["name", "email"], ["value", "a@b.c"], ["type", "email"]])).toBe('<input name="email" type="email">');
+    expect(shortName("BUTTON", "", ["btn", "primary", "big"])).toBe("button.btn.primary");
+    expect(shortName("DIV", "cart", ["x"])).toBe("#cart");
+    expect(shortName("DIV", ":r2:", ["hover:bg-red", "card"])).toBe("div.card");
   });
 });
