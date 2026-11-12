@@ -1,17 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import { QUIET_MINUTES, telegramText } from "../lib/notify.ts";
+import { QUIET_MINUTES } from "../lib/notify.ts";
+import { letterKeyboard, letterText } from "../lib/telegram.ts";
 import { setup } from "./helpers.ts";
 
 const TG = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42" };
 
-describe("telegramText", () => {
-  it("names the mailbox, the letter, where it came from, the unread count and a link that opens it", () => {
-    expect(telegramText("Scar", { id: 24, kind: "bug", text: "Nút Lưu không chạy", screen: "/bao-cao", platform: "web" }, 3, "https://pb.test")).toBe(
-      ["📬 Scar: new letter #24", "Bug · /bao-cao · web", "", "Nút Lưu không chạy", "", "3 unread letters in this mailbox", "https://pb.test/#/?id=24"].join("\n"));
-    const one = telegramText("App", { id: 1, kind: "idea", text: "x".repeat(400), screen: null, platform: null }, 1, "https://pb.test");
-    expect(one.split("\n")[1]).toBe("Idea");
-    expect(one.split("\n")[3]).toHaveLength(300);
-    expect(one).toContain("1 unread letter in this mailbox");
+describe("letter messages", () => {
+  const l = { id: 24, project_name: "Scar", kind: "bug", text: "Nút Lưu không chạy", screen: "/bao-cao", platform: "web" };
+  it("name the mailbox, the letter, where it came from, the count line and how to decide by replying", () => {
+    expect(letterText(l, "3 unread letters in this mailbox", "https://pb.test", true).split("\n")).toEqual([
+      "📬 Scar: new letter #24", "Bug · /bao-cao · web", "", "Nút Lưu không chạy", "", "3 unread letters in this mailbox",
+      "Reply to this message with what the agent should do: the letter goes to Ready with your words as the decision."]);
+    expect(letterText(l, "x", "https://pb.test", false).split("\n")[0]).toBe("📬 Scar: letter #24");
+    const long = letterText({ ...l, kind: "idea", text: "x".repeat(2000), screen: null, platform: null }, "", "https://pb.test", true).split("\n");
+    expect(long[1]).toBe("Idea");
+    expect(long[3]).toHaveLength(1500);
+  });
+  it("carry Open, Won't fix and Next unread; a dashboard without https gets the link in the text instead", () => {
+    expect(letterKeyboard(24, "https://pb.test")).toEqual({ inline_keyboard: [[{ text: "Open in Postbox", url: "https://pb.test/#/?id=24" }], [{ text: "Won't fix", callback_data: "w:24" }, { text: "Next unread", callback_data: "n" }]] });
+    expect(letterKeyboard(24, "http://localhost:8788").inline_keyboard).toHaveLength(1);
+    expect(letterText(l, "x", "http://localhost:8788", true)).toContain("http://localhost:8788/#/?id=24");
   });
 });
 
@@ -25,7 +33,7 @@ describe("notifications on submit", () => {
     await t.settle();
     expect(t.sent).toHaveLength(1);
     expect(t.sent[0].url).toBe("https://api.telegram.org/bot123:abc/sendMessage");
-    expect(t.sent[0].body).toMatchObject({ chat_id: "42", link_preview_options: { is_disabled: true } });
+    expect(t.sent[0].body).toMatchObject({ chat_id: "42", link_preview_options: { is_disabled: true }, reply_markup: letterKeyboard(1, "https://hub.test") });
     expect(t.sent[0].body).not.toHaveProperty("parse_mode");
     expect(t.sent[0].body.text).toContain("📬 Demo: new letter #1\nBug · Home · ios");
 
@@ -61,7 +69,7 @@ describe("notifications on submit", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await t.submit({ text: "still stored" })).status).toBe(201);
     await t.settle();
-    expect(log).toHaveBeenCalledWith("notify failed:", "telegram answered 401");
+    expect(log).toHaveBeenCalledWith("notify failed:", "telegram sendMessage answered 401");
     expect(JSON.stringify(log.mock.calls)).not.toContain("123:abc");
     log.mockRestore();
   });

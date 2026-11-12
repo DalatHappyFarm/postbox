@@ -3,7 +3,9 @@ import { stripJpeg } from "./jpeg.ts";
 import { readLimits, type Limits } from "./limits.ts";
 import { cleanElement, cleanLogs } from "./context.ts";
 import { notifyNewLetter } from "./notify.ts";
+import { connectTelegram, telegramUpdate } from "./telegram.ts";
 import { MAX_ORIGINS, normalizeOrigin, originAllowed } from "./origins.ts";
+import { hex, sha256, tokenOk } from "./secure.ts";
 
 export type Row = Record<string, any>;
 export type Sql = (s: TemplateStringsArray, ...v: unknown[]) => Promise<Row[]>;
@@ -36,17 +38,6 @@ const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", ...headers } });
 const fail = (status: number, error: string, headers: HeadersInit = {}) => json({ error }, status, headers);
 
-const sha256 = async (s: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
-const hex = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
-
-// Constant time: compare fixed-length digests, no early exit.
-async function tokenOk(given: string, expected: string) {
-  const a = await sha256(given);
-  const b = await sha256(expected);
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
-}
 
 export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFAULT_DEPS): Promise<Response> {
   const { pathname } = new URL(req.url);
@@ -68,6 +59,8 @@ export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFA
   }
 
   if (!env.ADMIN_TOKEN) return fail(500, "misconfigured");
+  // Telegram's webhook proves itself with a secret header, checked in telegramUpdate.
+  if (seg[0] === "telegram" && seg.length === 1 && m === "POST") return telegramUpdate(req, env, sql, L.MAX_TEXT, deps.fetch);
   // A phone trades a one-time code (shown as a QR code on the owner's computer) for the admin token.
   if (seg[0] === "pair" && seg[1] === "claim" && seg.length === 2 && m === "POST") return claimPair(req, env, sql);
   const bearer = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
@@ -79,6 +72,7 @@ export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFA
   }
   if (seg[0] === "projects" && seg.length === 2 && m === "PATCH") return patchProject(seg[1], req, sql);
   if (seg[0] === "pair" && seg.length === 1 && m === "POST") return newPair(sql);
+  if (seg[0] === "telegram" && seg[1] === "connect" && seg.length === 2 && m === "POST") return connectTelegram(req, env, deps.fetch);
   if (seg[0] === "feedback") {
     if (seg.length === 1 && m === "GET") return list(new URL(req.url), sql);
     if (seg.length === 1 && m === "POST") return addLetter(req, env, sql, L);

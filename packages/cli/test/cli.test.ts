@@ -305,6 +305,15 @@ describe("postbox", () => {
     await expect(run(["project", "origins", "web", "https://a.com", "--any"], h.d)).rejects.toThrow("not both");
   });
 
+  it("telegram connect asks the server to point the bot's webhook at itself", async () => {
+    const h = harness(() => Response.json({ url: "https://hub.test/api/telegram" }));
+    await run(["telegram", "connect"], h.d);
+    expect(h.calls[0]).toMatchObject({ url: "https://hub.test/api/telegram/connect", init: { method: "POST" } });
+    expect(h.out).toEqual(["Telegram now sends replies and buttons to https://hub.test/api/telegram"]);
+    const off = harness(() => Response.json({ error: "set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID first" }, { status: 400 }));
+    await expect(run(["telegram", "connect"], off.d)).rejects.toThrow("400 set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID first");
+  });
+
   it("status accepts ready and refuses duplicate", async () => {
     const h = harness(() => Response.json({ ...item, status: "ready" }));
     await run(["status", "42", "ready"], h.d);
