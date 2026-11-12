@@ -96,7 +96,7 @@ body.triage #app{--chrome:90px}
 .facet:first-child .count{background:var(--br);color:var(--inv)}
 .count.zero{background:transparent;color:var(--mu);font-weight:500}
 #list-pane{background:var(--bg);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:auto;position:relative}
-#detail{background:var(--bg);container-type:inline-size}
+#detail{background:var(--bg);container:detail/inline-size}
 .filters-btn{display:none}
 @media(min-width:700px){.shell{grid-template-columns:minmax(320px,400px) minmax(0,1fr)}}
 @media(min-width:1100px){.shell{grid-template-columns:232px minmax(360px,420px) minmax(0,1fr)}}
@@ -234,7 +234,7 @@ button.del{color:var(--dnt)}button.del:hover{border-color:var(--dnbd)}
 .agent-note{margin:12px 0 0;padding:8px 12px 10px;border-left:3px solid var(--pine);border-radius:0 8px 8px 0;background:var(--sunk)}
 .agent-note h4{margin:0 0 2px;font-size:12px;line-height:16px;font-weight:650;color:var(--mu)}
 .agent-note p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:20px}
-@container (min-width:720px){
+@container detail (min-width:720px){
   .letter.has-photo{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);align-items:start;column-gap:24px}
   .letter.has-photo .l-head{grid-column:1/-1}
   .letter.has-photo .photo{position:sticky;top:12px}
@@ -243,12 +243,12 @@ button.del{color:var(--dnt)}button.del:hover{border-color:var(--dnbd)}
 }
 /* A wide screenshot (a desktop page) in a reading pane of usual width: the photo goes full width on top, then the
    text and the decision side by side, so the page is readable without the viewer. Wide panes (triage) keep two columns. */
-@container (min-width:720px) and (max-width:1099px){
+@container detail (min-width:720px) and (max-width:1099px){
   .letter.has-photo.wide{grid-template-columns:minmax(0,1fr);--ph:min(52dvh,520px)}
   .letter.has-photo.wide .photo{position:static}
   .letter.has-photo.wide .l-side{grid-template-columns:minmax(0,1fr) minmax(280px,340px);column-gap:24px;align-items:start}
 }
-@container (max-width:719px){
+@container detail (max-width:719px){
   .l-head .copy span,.l-head .back span{display:none}.l-head .copy,.l-head .back{width:36px;padding:0}
   .letter{padding-bottom:0;display:flex;flex-direction:column;min-height:100%}
   .letter .l-side,.letter .decide{display:contents}
@@ -257,16 +257,20 @@ button.del{color:var(--dnt)}button.del:hover{border-color:var(--dnbd)}
   .d-note,.d-rest{padding:12px;border:1px solid var(--bd);border-radius:12px;background:var(--sunk)}
   .letter.has-photo{--ph:min(42dvh,420px)}
   .d-main{grid-template-columns:1fr 1fr}.big.ready{grid-column:1/-1}
+  .big{padding:0 8px}.big svg{display:none}.d-cap{width:100%}.seg kbd{display:none}
 }
 @media(max-width:699px){.letter{--pad:16px}.l-head .back{display:inline-flex}}
 
 /* decision controls */
-.decide{display:grid;gap:12px;padding:16px;border:1px solid var(--bd);border-radius:12px;background:var(--sunk)}
+/* The decision box sizes its own buttons by its own width (it can be a narrow column in a wide pane), not by the pane's. */
+.decide{display:grid;gap:12px;padding:16px;border:1px solid var(--bd);border-radius:12px;background:var(--sunk);container:decide/inline-size}
 .d-label{font-weight:650}
 .decide textarea{min-height:76px}
 .d-note{display:grid;gap:6px}
-.d-main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-@container (max-width:1010px){.d-main{grid-template-columns:1fr 1fr}.big.ready{grid-column:1/-1}.big{padding:0 8px}.big svg{display:none}.d-cap{width:100%}.seg kbd{display:none}}
+.d-main{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.d-main .big.ready{grid-column:1/-1}
+@container decide (min-width:590px){.d-main{grid-template-columns:repeat(3,minmax(0,1fr))}.d-main .big.ready{grid-column:auto}}
+@container decide (max-width:420px){.big{padding:0 8px}.big svg{display:none}.d-cap{width:100%}.seg kbd{display:none}}
 .big{min-height:48px;font-size:15px;justify-content:center;border-width:1.5px;white-space:nowrap}
 .big.ready{background:var(--br);border-color:var(--br);color:var(--inv)}
 .big.ready:hover{background:var(--brh)}
