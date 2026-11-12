@@ -67,10 +67,11 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
 
 - `GET /api/limits` (public): the active limits for clients, cached for an hour.
 - `POST /api/submit` (public, CORS open; used by the kit and the web widget): header `X-Project-Key`, optional `X-Device-Id` (the per-device rate limit is per ip without it).
+  When the mailbox has allowed origins, a request whose `Origin` is not on the list gets 403 `origin not allowed`, before the rate limit; a request without `Origin` (an app) is accepted.
   Multipart (kit 0.2.0): field `meta` (JSON `{kind, text, screen, app_version, build, platform, device, os, locale, url, device_id}`), optional `screenshot` file, `photo` files in display order, optional `thumb` (small JPEG of the first image).
   JSON (kit 0.1.0, still accepted): the same fields plus `screenshot` as base64, stored as attachment 0.
   `text` is required, `kind` is `bug|idea|other`, `platform` is `ios|android|web`; images are JPEG or PNG by magic bytes, and JPEG metadata (EXIF, GPS) is stripped on the server.
-  Check order: project key, rate limit, `Content-Length` (411 if missing, 413 if too large, body unread), counts and sizes, magic bytes, stripping, parallel R2 writes.
+  Check order: project key, allowed origins, rate limit, `Content-Length` (411 if missing, 413 if too large, body unread), counts and sizes, magic bytes, stripping, parallel R2 writes.
   Returns `{id}`.
 - Admin, header `Authorization: Bearer <ADMIN_TOKEN>`:
   - `GET /api/feedback`: filters `project`, `status` (comma list, `new,ready`), `kind`, `screen`, `build`, `priority` (`0`-`3` or `none`), `label`, `source` (`app|web`), `q` (case-insensitive search in the text, the decision and the agent's note); `sort` is `new` (default), `old` or `priority` (priority, then oldest); `limit` (max 200) and `cursor`.
@@ -84,7 +85,7 @@ Create a mailbox (a project) with the CLI below, and give its public key to your
   - `POST /api/feedback`: add a letter by hand (source `web`, no rate limit): multipart with `meta` (as for submit, plus `project` slug), `photo` files and an optional `thumb`; same limits, magic-byte and JPEG-metadata rules as submit.
     Returns `{id}`.
   - `GET /api/feedback/:id/attachments/:position`, `GET /api/feedback/:id/thumb`, `GET /api/feedback/:id/screenshot` (alias of attachment 0).
-  - `GET /api/projects` (with `counts` by status per project), `POST /api/projects` (`slug`, `name`).
+  - `GET /api/projects` (with `counts` by status and `allowed_origins` per project), `POST /api/projects` (`slug`, `name`), `PATCH /api/projects/:slug` (`{allowed_origins: [...]}`, the whole list, at most 20; `[]` allows any origin).
 - Statuses: `new`, `ready` (decided, waiting for the agent), `doing`, `done`, `wont_fix`, `duplicate`.
   Migration `0003_triage.sql` adds them; `pnpm db:migrate` applies it.
 
@@ -181,6 +182,7 @@ A config from the old `~/.config/fh/config.json` is copied once and the old file
 ```sh
 postbox project add my-app "My App"   # prints the public key (pbk_...) for the app
 postbox project snippet my-site       # the <script> tag that puts the web widget on a site
+postbox project origins my-site https://shop.com "https://*.shop.com" "http://localhost:*"   # only these websites may send with the key; no origins prints the list, --any clears it
 postbox queue [--project slug] [--json]     # letters in Ready, highest priority then oldest
 postbox claim 42 [--json]             # Ready -> In progress in one step on the server, then prints the brief; fails if the letter is not Ready (or another agent took it)
 postbox brief 42 43 [--json]          # markdown brief per letter: decision, agent's note, duplicates folded in, every photo downloaded to the temp dir (an image deleted after 90 days is listed as gone)
@@ -199,7 +201,9 @@ postbox done 42 --note "fixed in build 78"       # Done, and the note says what 
 - Testers send with a per-project public key (`pbk_` plus 48 hex characters). It is not a secret and only allows submitting; submits are rate limited per device, IP and project.
 - Reading and changing feedback needs the single `ADMIN_TOKEN`.
 - Images are accepted by magic bytes only, and JPEG metadata (EXIF, GPS) is stripped on the server.
-- The key is visible in a website's HTML like in an app bundle; until allowed origins per mailbox exist, the rate limits are the protection, so keep the widget to staging and tester mode on busy public sites.
+- The key is visible in a website's HTML like in an app bundle.
+  Before the widget goes on a public site, list the site with `postbox project origins <slug> https://your-site.com` (wildcards `https://*.your-site.com` and `http://localhost:*` work): browsers then refuse to send that key from any other website.
+  Scripts and native apps can still send with the key (they choose their own `Origin` or none), so the rate limits stay the protection against them.
 - See `SECURITY.md` to report a problem.
 
 ## Privacy and retention
@@ -211,7 +215,7 @@ Mention in-app feedback and attached photos in your own privacy policy.
 
 ## Roadmap
 
-- Web widget, next: point at an element (its selector and a frame in the screenshot), recent console errors and failed requests in the brief, and allowed origins per mailbox before it goes on production sites.
+- Web widget, next: point at an element (its selector and a frame in the screenshot), recent console errors and failed requests in the brief.
 - Notifications and webhooks on new letters.
 - Triage help: duplicates, severity, screen hints.
 - Postbox on its own domain and a one-command deploy.

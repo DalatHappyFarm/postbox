@@ -267,6 +267,27 @@ describe("postbox", () => {
     expect(posts.length).toBe(before); // nothing uploaded after a failed check
   });
 
+  it("project origins prints, replaces and clears a mailbox's allowed origins", async () => {
+    let saved = ["https://shop.com"];
+    const h = harness((url, init) => {
+      if (init?.method === "PATCH") { saved = JSON.parse(init.body as string).allowed_origins; return Response.json({ slug: "web", allowed_origins: saved }); }
+      return Response.json([{ slug: "web", allowed_origins: saved }, { slug: "app" }]);
+    });
+    await run(["project", "origins", "web"], h.d);
+    expect(h.out.pop()).toBe("https://shop.com");
+    await run(["project", "origins", "web", "https://shop.com", "https://*.shop.com"], h.d);
+    expect(h.calls.at(-1)!.url).toBe("https://hub.test/api/projects/web");
+    expect(JSON.parse(h.calls.at(-1)!.init.body as string)).toEqual({ allowed_origins: ["https://shop.com", "https://*.shop.com"] });
+    expect(h.out.pop()).toBe("https://shop.com\nhttps://*.shop.com");
+    await run(["project", "origins", "web", "--any"], h.d);
+    expect(JSON.parse(h.calls.at(-1)!.init.body as string)).toEqual({ allowed_origins: [] });
+    expect(h.out.pop()).toBe("any origin (no list): every website can send with this key");
+    await run(["project", "origins", "app"], h.d);
+    expect(h.out.pop()).toContain("any origin");
+    await expect(run(["project", "origins", "nope"], h.d)).rejects.toThrow('no mailbox "nope"');
+    await expect(run(["project", "origins", "web", "https://a.com", "--any"], h.d)).rejects.toThrow("not both");
+  });
+
   it("status accepts ready and refuses duplicate", async () => {
     const h = harness(() => Response.json({ ...item, status: "ready" }));
     await run(["status", "42", "ready"], h.d);

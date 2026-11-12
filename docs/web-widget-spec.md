@@ -4,7 +4,8 @@ Goal: a tester on any website the owner builds sends a note with a screenshot of
 Installing it on a new site takes one command and one pasted line.
 
 This is slice 1.
-Slice 2 adds pointing at an element, console errors and failed requests in the brief, and allowed origins per mailbox (one migration for all three).
+Slice 2 adds pointing at an element, console errors and failed requests in the brief, and allowed origins per mailbox.
+Allowed origins shipped first (2026-11-12, migration `0005_allowed_origins.sql`), see section 1.
 
 ## 1. Install
 
@@ -12,6 +13,10 @@ Slice 2 adds pointing at an element, console errors and failed requests in the b
 - Served by the Postbox deployment itself from `public/`, so a redeploy updates every site; no npm package, no build step, works on static sites, WordPress and frameworks alike.
 - `widget.js` is a tiny classic loader (works with or without `type="module"`, and when the tag is added late); it queues `Postbox.open()` calls and imports `widget/app.js`, which imports `widget/lib.js`; the screenshot library `widget/snap.js` is imported only when the panel first opens.
 - `_headers` gives `/widget.js` and `/widget/*` `Access-Control-Allow-Origin: *` (module imports are CORS requests) and `Cross-Origin-Resource-Policy: cross-origin` (pages with COEP).
+- Allowed origins: `postbox project origins <slug> https://shop.com https://*.shop.com` limits which websites may send with the mailbox's key (`PATCH /api/projects/:slug`, `{allowed_origins: [...]}`, at most 20).
+  A pattern is `scheme://host[:port]`; `*.` matches any subdomain (not the domain itself, and never a whole top-level domain) and `:*` any port, which suits `http://localhost:*`.
+  The submit checks the `Origin` header right after the key and before the rate limit, so another website cannot use up the mailbox's hourly allowance; it answers 403 `origin not allowed`, the panel shows its setup message and keeps the draft, and the console names the origin to add.
+  An empty list allows any origin (the default, so existing installs keep working), and a request without `Origin` (native apps, scripts) is accepted: browsers enforce the list, scripts can still send, and the rate limits stay the protection there.
 
 ## 2. When the button shows
 
@@ -76,7 +81,7 @@ Slice 2 adds pointing at an element, console errors and failed requests in the b
 - Source facet: "From testers" (kit and widget, `source=app`) and "Added by hand" (`source=web`); the API values stay.
 - Build shows `1.2 (34)` with both values and the single value otherwise (it showed `(e2e-1)`); the same rule in the dashboard brief and the CLI brief; the dashboard brief also lists `locale`, like the CLI.
 - The URL in a letter is a link that opens in a new tab.
-- `postbox project snippet <slug>` prints the tag with the configured Postbox URL.
+- `postbox project snippet <slug>` prints the tag with the configured Postbox URL; `postbox project origins <slug> [origin ...] [--any]` prints, replaces or clears the allowed origins.
 
 ## 8. Checks
 

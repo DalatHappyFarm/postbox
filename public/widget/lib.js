@@ -194,7 +194,7 @@ export function buildMeta(f, maxText = DEFAULT_LIMITS.max_text) {
 export function errorKey(status, error) {
   if (status === 0) return "offline";
   if (status === 429) return "rate";
-  if (status === 401) return "setup";
+  if (status === 401 || status === 403) return "setup";
   if (status === 413) return error === "text too long" ? "textLong" : "tooLarge";
   if (status === 415) return "badImage";
   if (status === 400 && error === "text is required") return "empty";

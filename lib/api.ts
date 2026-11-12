@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { stripJpeg } from "./jpeg.ts";
 import { readLimits, type Limits } from "./limits.ts";
+import { MAX_ORIGINS, normalizeOrigin, originAllowed } from "./origins.ts";
 
 export type Row = Record<string, any>;
 export type Sql = (s: TemplateStringsArray, ...v: unknown[]) => Promise<Row[]>;
@@ -69,6 +70,7 @@ export async function handle(req: Request, env: Env, sql: Sql): Promise<Response
     if (m === "GET") return projects(sql);
     if (m === "POST") return createProject(req, sql);
   }
+  if (seg[0] === "projects" && seg.length === 2 && m === "PATCH") return patchProject(seg[1], req, sql);
   if (seg[0] === "feedback") {
     if (seg.length === 1 && m === "GET") return list(new URL(req.url), sql);
     if (seg.length === 1 && m === "POST") return addLetter(req, env, sql, L);
@@ -114,8 +116,10 @@ async function submit(req: Request, env: Env, sql: Sql, L: Limits): Promise<Resp
   // 1. key and rate limit first: a rejected caller costs no body read.
   const key = req.headers.get("x-project-key");
   if (!key) return bad(401, "missing project key");
-  const [project] = await sql`select id::int as id, slug from projects where public_key = ${key}`;
+  const [project] = await sql`select id::int as id, slug, allowed_origins from projects where public_key = ${key}`;
   if (!project) return bad(401, "invalid project key");
+  // Before the rate limit, so a page on another site cannot use up the mailbox's hourly allowance.
+  if (!originAllowed(req.headers.get("origin"), project.allowed_origins)) return bad(403, "origin not allowed");
 
   const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
   // ponytail: plain sha-256 of ip + device id, no secret salt; the hash only groups submits, add a salt if it is ever shown to anyone.
@@ -486,7 +490,7 @@ async function addLetter(req: Request, env: Env, sql: Sql, L: Limits) {
 async function projects(sql: Sql) {
   const rows = await sql`with c as (
       select project_id, jsonb_object_agg(status, n) as counts from (select project_id, status, count(*)::int as n from feedback group by project_id, status) g group by project_id)
-    select p.slug, p.name, p.public_key, p.created_at, c.counts from projects p left join c on c.project_id = p.id order by p.id`;
+    select p.slug, p.name, p.public_key, p.allowed_origins, p.created_at, c.counts from projects p left join c on c.project_id = p.id order by p.id`;
   return json(rows.map((r) => ({ ...r, counts: { ...zeroCounts(), ...(r.counts ?? {}) } })));
 }
 
@@ -508,6 +512,28 @@ async function attachment(id: number, position: number, req: Request, env: Env, 
 async function thumb(id: number, req: Request, env: Env, sql: Sql) {
   const [row] = await sql`select thumb_key from feedback where id = ${id}`;
   return row?.thumb_key ? stream(row.thumb_key, "image/jpeg", req, env) : fail(404, "no thumb");
+}
+
+/** Set a mailbox's allowed origins (the whole list; [] allows any origin). */
+async function patchProject(slug: string, req: Request, sql: Sql) {
+  let b: Row;
+  try {
+    b = await req.json();
+  } catch {
+    return fail(400, "invalid json");
+  }
+  const list: unknown = b?.allowed_origins;
+  if (!Array.isArray(list)) return fail(400, "allowed_origins required");
+  if (list.length > MAX_ORIGINS) return fail(400, `at most ${MAX_ORIGINS} origins`);
+  const origins: string[] = [];
+  for (const x of list) {
+    const o = typeof x === "string" ? normalizeOrigin(x) : null;
+    if (!o) return fail(400, `invalid origin: ${String(x).slice(0, 100)}`);
+    if (!origins.includes(o)) origins.push(o);
+  }
+  const [row] = await sql`update projects set allowed_origins = array(select jsonb_array_elements_text(${JSON.stringify(origins)}::jsonb))
+    where slug = ${slug} returning slug, name, public_key, allowed_origins, created_at`;
+  return row ? json(row) : fail(404, "unknown project");
 }
 
 async function createProject(req: Request, sql: Sql) {
