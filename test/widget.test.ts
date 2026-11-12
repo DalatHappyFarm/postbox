@@ -1,5 +1,5 @@
 import { describe as group, expect, it } from "vitest";
-import { buildMeta, cleanUrl, DEFAULT_LIMITS, describe, errorKey, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, STRINGS, testerFlag } from "../public/widget/lib.js";
+import { buildMeta, cleanUrl, DEFAULT_LIMITS, describe, errorKey, FAB_REST, initialFab, isDrag, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, snapFab, STRINGS, testerFlag } from "../public/widget/lib.js";
 
 const UA = {
   macChrome: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -20,17 +20,43 @@ group("web widget helpers", () => {
       expect(isStagingHost(h), h).toBe(true);
     for (const h of ["example.com", "www.shop.vn", "developer.example.com", "testimonials.example.com", "172.32.0.1", "8.8.8.8", ""])
       expect(isStagingHost(h), h).toBe(false);
-    expect(showButton("auto", "example.com", false)).toBe(false);
+    expect(showButton("auto", "example.com", null)).toBe(false);
     expect(showButton("auto", "example.com", true)).toBe(true);
-    expect(showButton(undefined, "localhost", false)).toBe(true);
+    expect(showButton(undefined, "localhost", null)).toBe(true);
     expect(showButton("never", "localhost", true)).toBe(false);
     expect(showButton("always", "example.com", false)).toBe(true);
+  });
+
+  it("hides the button for a tester who switched it off, on staging hosts too", () => {
+    expect(showButton("auto", "localhost", false)).toBe(false);
+    expect(showButton("auto", "staging.example.com", false)).toBe(false);
+    expect(showButton(undefined, "localhost", undefined)).toBe(true);
   });
 
   it("turns tester mode on and off from ?feedback and keeps the stored value otherwise", () => {
     expect([testerFlag("?feedback", false), testerFlag("?a=1&feedback=1", false), testerFlag("?feedback=on", false)]).toEqual([true, true, true]);
     expect([testerFlag("?feedback=0", true), testerFlag("?feedback=off", true), testerFlag("?feedback=FALSE", true)]).toEqual([false, false, false]);
     expect([testerFlag("", true), testerFlag("?x=1", false), testerFlag(undefined, true)]).toEqual([true, false, true]);
+    expect([testerFlag("", null), testerFlag("?x=1", undefined), testerFlag("?feedback=off", null)]).toEqual([null, null, false]);
+  });
+
+  it("tells a click from a drag and docks a dropped button to the nearest side at the same height", () => {
+    expect([isDrag(0, 0), isDrag(6, 7), isDrag(8, 7), isDrag(0, -11)]).toEqual([false, false, true, true]);
+    expect(snapFab(100, 300, 1000, 800)).toEqual({ side: "left", y: 0.375 });
+    expect(snapFab(501, 300, 1000, 800)).toEqual({ side: "right", y: 0.375 });
+    expect(snapFab(900, -40, 1000, 800)).toEqual({ side: "right", y: 0 });
+    expect(snapFab(900, 900, 1000, 800)).toEqual({ side: "right", y: 1 });
+    expect(snapFab(10, 123, 390, 844)).toEqual({ side: "left", y: 0.146 });
+    expect(snapFab(10, 10, 390, 0)).toEqual({ side: "left", y: FAB_REST });
+  });
+
+  it("starts where the tester left the button, else on the data-position side at the default height", () => {
+    expect(initialFab('{"side":"left","y":0.3}', undefined)).toEqual({ side: "left", y: 0.3 });
+    expect(initialFab('{"side":"right","y":0.9}', "left")).toEqual({ side: "right", y: 0.9 });
+    expect(initialFab(null, undefined)).toEqual({ side: "right", y: FAB_REST });
+    expect(initialFab(null, "left")).toEqual({ side: "left", y: FAB_REST });
+    for (const bad of ["", "nope", "null", "[]", '{"side":"top","y":0.5}', '{"side":"left","y":2}', '{"side":"left","y":"0.5"}', '{"side":"left"}'])
+      expect(initialFab(bad, "left"), bad).toEqual({ side: "left", y: FAB_REST });
   });
 
   it("cleans the address: no credentials, secrets redacted, fragment only for #/ routes, no feedback switch", () => {

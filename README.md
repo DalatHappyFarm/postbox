@@ -143,12 +143,15 @@ The widget is served by your own Postbox, so a redeploy updates it on every site
 |---|---|---|
 | `data-key` | required | The mailbox's public key |
 | `data-button` | `auto` | `auto` shows the floating button only on development, preview and staging hosts: `localhost`, private IPs, `*.test`, `*.local`, `*.pages.dev`, `*.vercel.app`, `*.netlify.app`, `*.workers.dev`, and hosts that start with `staging`, `stage`, `dev`, `preview`, `test` or `qa` followed by `.` or `-`; `always`; `never` |
-| `data-position` | `right` | `left` puts the button and the panel in the left corner (for sites with their own chat bubble) |
+| `data-position` | `right` | The side the button starts on; `left` also opens the panel on the left |
 | `data-lang` | the page's `<html lang>`, then the browser | `vi` or `en` |
 | `data-build`, `data-version` | not sent | Sent as `build` and `app_version`, for example the deploy's commit |
 | `data-theme` | from the page background | `light` or `dark` |
 
-On a production host the button stays hidden: a tester opens any page with `?feedback` once and that browser keeps tester mode (`?feedback=off` ends it).
+On a production host the button stays hidden: a tester opens any page with `?feedback` once and that browser keeps tester mode; `?feedback=off` hides the button in that browser, on staging hosts too.
+The round button sits on the right edge at about 62% of the window height, clear of chat bubbles, "back to top" buttons and bars pinned to the bottom.
+A tester can drag it to any height on either side; it docks to the nearest edge, the panel opens on that side, and the browser keeps the place for that site.
+On a phone it steps aside while the tester types into the page.
 A site can also open the panel itself: any element with `data-postbox-open` (value `bug`, `idea` or `other`) opens it without inline script, and `Postbox.open(kind)` works from code (calls made before the widget has loaded are queued).
 The screen name is the path with ids folded (`/orders/123` becomes `/orders/:id`, a `#/` route is appended), so letters group by page in the dashboard; a single-page app can name its screens with `Postbox.setScreen("Checkout")`.
 

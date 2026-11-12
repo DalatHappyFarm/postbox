@@ -3,7 +3,7 @@
 // so it works under a strict CSP (no inline styles, no innerHTML) and the page's CSS cannot reach it.
 import {
   STRINGS, DEFAULT_LIMITS, MAX_EDGE, JPEG_QUALITY, THUMB_EDGE, THUMB_QUALITY,
-  pickLang, readLimits, showButton, testerFlag, cleanUrl, normalizeScreen, describe, buildMeta, errorKey, sendTimeout, slotsLeft, resizeDims,
+  pickLang, readLimits, showButton, testerFlag, initialFab, snapFab, isDrag, cleanUrl, normalizeScreen, describe, buildMeta, errorKey, sendTimeout, slotsLeft, resizeDims,
 } from "./lib.js";
 
 const KINDS = ["bug", "idea", "other"];
@@ -11,7 +11,7 @@ const MAX_THUMB_BYTES = 64 * 1024;
 const CAPTURE_TIMEOUT_MS = 15_000;
 const SHIFT = "data-postbox-shift";
 const MASK = 'input[type="password"], [autocomplete^="cc-"], [data-postbox-mask]';
-const KEY = { consent: "postbox.consent.v1", device: "postbox.device-id.v1", tester: "postbox.tester.v1", draft: "postbox.draft.v1:" };
+const KEY = { consent: "postbox.consent.v1", device: "postbox.device-id.v1", tester: "postbox.tester.v1", draft: "postbox.draft.v1:", fab: "postbox.button-position.v1" };
 
 // localStorage can be missing or throw (private mode, blocked site data): fall back to memory for this page.
 const memory = new Map();
@@ -65,9 +65,10 @@ function icon(name) {
 const CSS = `
 :host { all: initial; }
 :host { --bg: #fff; --fg: #1f1f21; --muted: #6e6e73; --line: #e3e3e1; --soft: #f3f3f2; --focus: #1868db; --danger: #c4314b; --ok: #2f8f4e;
-  --fab: #1f1f21; --fab-fg: #fff; --shadow: 0 12px 40px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.08); --scrim: rgba(0,0,0,.14); color-scheme: light; }
+  --fab: #1f1f21; --fab-fg: #fff; --shadow: 0 12px 40px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.08); --lift: 0 18px 48px rgba(0,0,0,.24), 0 4px 12px rgba(0,0,0,.12);
+  --scrim: rgba(0,0,0,.14); color-scheme: light; }
 :host([data-postbox-theme="dark"]) { --bg: #1c1c1e; --fg: #f2f2f3; --muted: #a1a1a6; --line: #3a3a3c; --soft: #2c2c2e; --focus: #5b9bff; --danger: #ff6b81; --ok: #4cc777;
-  --fab: #f2f2f3; --fab-fg: #1f1f21; --shadow: 0 12px 40px rgba(0,0,0,.55); --scrim: rgba(0,0,0,.4); color-scheme: dark; }
+  --fab: #f2f2f3; --fab-fg: #1f1f21; --shadow: 0 12px 40px rgba(0,0,0,.55); --lift: 0 18px 48px rgba(0,0,0,.7); --scrim: rgba(0,0,0,.4); color-scheme: dark; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 .fab, .panel { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--fg);
@@ -79,19 +80,25 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); border: 0; white-space: nowrap; }
 
-.fab { position: fixed; z-index: 2147483647; right: calc(20px + env(safe-area-inset-right, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+/* Docked to a side edge; --pb-y is the height of its centre as a share of the viewport, kept inside the safe area. */
+.fab { position: fixed; z-index: 2147483647; right: calc(12px + env(safe-area-inset-right, 0px)); bottom: auto;
+  top: clamp(calc(env(safe-area-inset-top, 0px) + 12px), calc(var(--pb-y, .62) * 100% - 22px), calc(100% - env(safe-area-inset-bottom, 0px) - 56px));
   width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;
-  background: var(--fab); color: var(--fab-fg); box-shadow: var(--shadow); opacity: .9; transition: opacity .15s, transform .15s; }
+  background: var(--fab); color: var(--fab-fg); box-shadow: var(--shadow); opacity: .9; transition: opacity .15s, transform .15s, box-shadow .15s;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .fab:hover { opacity: 1; transform: translateY(-1px); }
 .fab:active { transform: scale(.96); }
-.fab.left { right: auto; left: calc(20px + env(safe-area-inset-left, 0px)); }
+.fab.left { right: auto; left: calc(12px + env(safe-area-inset-left, 0px)); }
+.fab.dragging { opacity: 1; transform: scale(1.08); box-shadow: var(--lift); cursor: grabbing; }
+.fab.away { opacity: 0; pointer-events: none; }
+.fab.typing { visibility: hidden; }
 .fab svg { width: 22px; height: 22px; }
 
-.panel { position: fixed; margin: 0; padding: 0; inset: auto calc(20px + env(safe-area-inset-right, 0px)) calc(76px + env(safe-area-inset-bottom, 0px)) auto;
-  width: min(380px, calc(100vw - 40px)); max-height: calc(100dvh - 100px); border: 1px solid var(--line); border-radius: 16px;
+.panel { position: fixed; margin: 0; padding: 0; inset: auto calc(20px + env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) auto;
+  width: min(380px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); border: 1px solid var(--line); border-radius: 16px;
   background: var(--bg); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; }
 .panel:not([open]) { display: none; }
-.panel.left { inset: auto auto calc(76px + env(safe-area-inset-bottom, 0px)) calc(20px + env(safe-area-inset-left, 0px)); }
+.panel.left { inset: auto auto calc(20px + env(safe-area-inset-bottom, 0px)) calc(20px + env(safe-area-inset-left, 0px)); }
 .panel::backdrop { background: var(--scrim); }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 10px 4px 18px; }
 h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
@@ -290,10 +297,9 @@ export function start(script, queue = []) {
   const t = STRINGS[pickLang(d.lang, document.documentElement.lang, navigator.languages || [navigator.language])];
   const fetchInit = { credentials: "omit", referrerPolicy: "no-referrer" }; // the cleaned URL is sent in meta, never the raw one in Referer
 
-  if (new URLSearchParams(location.search).has("feedback")) {
-    if (testerFlag(location.search, false)) store.set(KEY.tester, "1"); else store.del(KEY.tester);
-  }
-  const tester = store.get(KEY.tester) === "1";
+  const saved = store.get(KEY.tester);
+  const tester = testerFlag(location.search, saved === "1" ? true : saved === "0" ? false : null);
+  if (tester !== null) store.set(KEY.tester, tester ? "1" : "0");
   let screenName = null;
   let limits = null;
   const loadLimits = () => {
@@ -308,13 +314,75 @@ export function start(script, queue = []) {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(CSS);
   root.adoptedStyleSheets = [sheet];
-  const side = d.position === "left" ? " left" : "";
-  const fab = h("button", { class: "fab" + side, type: "button", title: t.button, "aria-label": t.button, onclick: () => open() }, icon("bubble"));
+  let dragged = false; // the click that ends a drag must not open the panel; a keyboard click (detail 0) always does
+  const fab = h("button", {
+    class: "fab", type: "button", title: `${t.button} · ${t.move}`, "aria-label": t.button,
+    onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0 || !dragged) open(); },
+  }, icon("bubble"));
   fab.hidden = !showButton(d.button || "auto", location.hostname, tester);
-  const dlg = h("dialog", { class: "panel" + side, "aria-labelledby": "pb-title", "data-drop": t.drop });
+  const dlg = h("dialog", { class: "panel", "aria-labelledby": "pb-title", "data-drop": t.drop });
   root.append(fab, dlg);
   // On <html>, not <body>: libraries that swap the body on navigation (Turbo, pjax) keep the widget.
   document.documentElement.append(host);
+
+  // ---------- the floating button: docked to a side edge, dragged to any height, kept per site ----------
+  let pos = initialFab(store.get(KEY.fab), d.position);
+  const place = () => {
+    for (const el of [fab, dlg]) el.classList.toggle("left", pos.side === "left"); // the panel opens on the button's side
+    fab.style.setProperty("--pb-y", String(pos.y));
+  };
+  place();
+  /** @type {{ id: number, x: number, y: number, moving: boolean } | null} */
+  let drag = null;
+  fab.addEventListener("pointerdown", (e) => {
+    if (!e.isPrimary || e.button !== 0) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moving: false };
+    dragged = false;
+    fab.setPointerCapture(e.pointerId); // keeps the events coming over iframes and outside the window
+  });
+  fab.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moving && !isDrag(dx, dy)) return;
+    drag.moving = true;
+    fab.classList.add("dragging");
+    fab.style.setProperty("translate", `${dx}px ${dy}px`);
+  });
+  const drop = (/** @type {PointerEvent} */ e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const moved = drag.moving;
+    drag = null;
+    if (!moved) return;
+    dragged = true;
+    const centre = () => { const r = fab.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const from = centre();
+    pos = snapFab(from.x, from.y, innerWidth, innerHeight);
+    store.set(KEY.fab, JSON.stringify(pos));
+    fab.classList.remove("dragging");
+    fab.style.removeProperty("translate");
+    place();
+    // Glide from where it was let go to its place on the edge.
+    const to = centre();
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      fab.animate([{ translate: `${from.x - to.x}px ${from.y - to.y}px` }, { translate: "0 0" }], { duration: 220, easing: "cubic-bezier(.2, .8, .2, 1)" });
+    }
+  };
+  fab.addEventListener("pointerup", drop);
+  fab.addEventListener("pointercancel", drop);
+
+  // On a phone the keyboard owns the bottom of the screen while the tester types into the page: the button steps aside, as in the kit.
+  const coarse = matchMedia("(pointer: coarse)");
+  const KEYBOARD = /^(text|search|email|url|tel|number|password)$/;
+  const typing = () => {
+    let a = document.activeElement;
+    if (a === host) return false; // our own panel
+    while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement;
+    return a instanceof HTMLElement && (a.isContentEditable || a instanceof HTMLTextAreaElement || (a instanceof HTMLInputElement && KEYBOARD.test(a.type)));
+  };
+  const syncTyping = () => fab.classList.toggle("typing", coarse.matches && typing());
+  document.addEventListener("focusin", syncTyping);
+  document.addEventListener("focusout", () => setTimeout(syncTyping)); // activeElement settles after focusout
+
   const theme = () => host.setAttribute("data-postbox-theme", d.theme === "dark" || d.theme === "light" ? d.theme : isDark(pageBackground()) ? "dark" : "light");
   theme();
 
@@ -352,11 +420,13 @@ export function start(script, queue = []) {
     loadLimits();
     S.step = store.get(KEY.consent) === "1" ? "form" : "consent";
     render(draft.text || "");
+    fab.classList.add("away"); // under the scrim anyway; still focusable, so closing can give it focus back
     dlg.showModal();
   }
 
   function close() { if (dlg.open) dlg.close(); }
   dlg.addEventListener("close", () => {
+    fab.classList.remove("away");
     S.run++;
     clearTimeout(S.doneTimer);
     if (S.shotUrl) URL.revokeObjectURL(S.shotUrl);
