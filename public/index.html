@@ -29,6 +29,7 @@
 <symbol id="i-filter" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M4.5 8h7M6.5 12h3"/></symbol>
 <symbol id="i-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.8"/></symbol>
 <symbol id="i-ban" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.75"/><path d="M4 4l8 8"/></symbol>
+<symbol id="i-phone" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.25" y="1.75" width="7.5" height="12.5" rx="1.75"/><path d="M7 11.75h2"/></symbol>
 <symbol id="i-trash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.75 4.25h10.5M6.25 4.25V2.75h3.5v1.5M4.25 4.25l.6 8.1a1 1 0 0 0 1 .9h4.3a1 1 0 0 0 1-.9l.6-8.1M6.75 6.75v4M9.25 6.75v4"/></symbol>
 <symbol id="i-dup" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="7" height="7" rx="1.5"/><rect x="6.5" y="6.5" width="7" height="7" rx="1.5"/></symbol>
 <symbol id="i-tag" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.2V3.5a1 1 0 0 1 1-1h4.7l5.3 5.3a1 1 0 0 1 0 1.4l-3.9 3.9a1 1 0 0 1-1.4 0z"/><circle cx="5.7" cy="5.7" r=".6"/></symbol>
@@ -63,6 +64,7 @@
     <span class="spacer"></span>
     <button id="triage-btn" class="strong" type="button" title="Triage the oldest unread letters (t)"><svg aria-hidden="true"><use href="#i-play"/></svg><span>Start triage</span><kbd>t</kbd></button>
     <button id="new-btn" class="primary" type="button" title="Add a letter by hand (n)"><svg aria-hidden="true"><use href="#i-plus"/></svg><span>New letter</span><kbd>n</kbd></button>
+    <button id="pair" class="icon" type="button" aria-label="Sign in on your phone" title="Sign in on your phone"><svg aria-hidden="true"><use href="#i-phone"/></svg></button>
     <button id="help" class="icon" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"><svg aria-hidden="true"><use href="#i-help"/></svg></button>
     <button id="theme" class="icon" type="button" aria-label="Switch to dark theme" title="Switch theme"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
     <button id="signout" class="ghost" type="button" aria-label="Sign out"><svg aria-hidden="true"><use href="#i-out"/></svg><span>Sign out</span></button>
@@ -160,6 +162,17 @@
     <ul id="dup-list" class="dup-list" role="listbox" aria-label="Matching letters"></ul>
     <p id="dup-msg" class="msg small" role="status"></p>
     <div class="actions"><span class="small muted"><kbd>Up</kbd> <kbd>Down</kbd> move, <kbd>Enter</kbd> choose</span><button type="button" id="dup-cancel">Cancel <kbd>Esc</kbd></button></div>
+  </div>
+</dialog>
+
+<dialog id="pairdlg" aria-labelledby="pair-title">
+  <div class="sheet pair">
+    <h2 id="pair-title">Sign in on your phone</h2>
+    <p class="muted">Scan this with your phone's camera. The phone opens Postbox already signed in, so letter links from Telegram open straight away.</p>
+    <div id="pair-qr" class="qr" role="img" aria-label="QR code that signs your phone in"></div>
+    <p id="pair-left" class="small muted" aria-live="polite"></p>
+    <p class="small muted">The code works once and only for a few minutes; your admin token itself is never in it. If Telegram opens links in its own browser, open one letter link in Safari or Chrome, or set Telegram to open links there.</p>
+    <div class="actions"><button id="pair-new" type="button" hidden>New code</button><button id="pair-close" type="button" class="primary">Done</button></div>
   </div>
 </dialog>
 

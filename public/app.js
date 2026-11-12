@@ -121,6 +121,8 @@ function commit(push = false) {
 const FILTER_KEYS = ["project", "status", "kind", "priority", "label", "source", "screen", "build", "q", "sort"];
 
 function applyHash() {
+  const pair = /^#pair=([0-9a-f]{32})$/.exec(location.hash)?.[1];
+  if (pair) { claimPair(pair); return; } // a pairing link opened in a tab that already shows Postbox
   if (!ready) return;
   const n = decodeHash(location.hash);
   const refilter = FILTER_KEYS.some((k) => n[k] !== S[k]);
@@ -1263,4 +1265,58 @@ paintTheme();
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 for (const k of document.querySelectorAll(".mod")) k.textContent = mac ? "Cmd" : "Ctrl";
 
-if (token) start(); else { $("login").hidden = false; $("token").focus(); }
+/* ---------- sign in on a phone: a one-time code as a QR code ---------- */
+
+let pairTimer = 0;
+const NS = "http://www.w3.org/2000/svg";
+/** The QR code as an SVG with a 4-module quiet zone, dark on white whatever the theme (phone cameras expect that). */
+function qrSvg(qr) {
+  const n = qr.size + 8, svg = document.createElementNS(NS, "svg"), bg = document.createElementNS(NS, "rect"), path = document.createElementNS(NS, "path");
+  svg.setAttribute("viewBox", `0 0 ${n} ${n}`); svg.setAttribute("shape-rendering", "crispEdges"); svg.setAttribute("aria-hidden", "true");
+  bg.setAttribute("width", String(n)); bg.setAttribute("height", String(n)); bg.setAttribute("fill", "#fff");
+  let d = "";
+  for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++) if (qr.getModule(x, y)) d += `M${x + 4} ${y + 4}h1v1h-1z`;
+  path.setAttribute("d", d); path.setAttribute("fill", "#000");
+  svg.append(bg, path);
+  return svg;
+}
+async function newPairCode() {
+  clearInterval(pairTimer);
+  const box = $("pair-qr"), left = $("pair-left");
+  box.classList.remove("expired"); box.replaceChildren(el("span", "ph", "Making a code…")); left.textContent = ""; $("pair-new").hidden = true;
+  try {
+    const [{ code, expires_at }, { default: qrcodegen }] = await Promise.all([send("POST", "/api/pair", {}), import("/qr.js")]);
+    box.replaceChildren(qrSvg(qrcodegen.QrCode.encodeText(`${location.origin}/#pair=${code}`, qrcodegen.QrCode.Ecc.MEDIUM)));
+    const end = new Date(expires_at).getTime();
+    const tick = () => {
+      const s = Math.max(0, Math.round((end - Date.now()) / 1000));
+      if (s) { left.textContent = `Works once, for ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} more`; return; }
+      clearInterval(pairTimer); box.classList.add("expired"); left.textContent = "This code has expired. Make a new one."; $("pair-new").hidden = false; $("pair-new").focus();
+    };
+    tick(); pairTimer = setInterval(tick, 1000);
+  } catch (e) {
+    if (e instanceof AuthError) return;
+    box.replaceChildren(el("span", "ph bad", `Could not make a code: ${why(e)}.`)); $("pair-new").hidden = false;
+  }
+}
+$("pair").addEventListener("click", () => { $("pairdlg").showModal(); newPairCode(); });
+$("pair-new").addEventListener("click", newPairCode);
+$("pair-close").addEventListener("click", () => $("pairdlg").close());
+$("pairdlg").addEventListener("close", () => { clearInterval(pairTimer); $("pair-qr").replaceChildren(); });
+
+/** The phone side: #pair=<code> from the QR code is traded for the token, then removed from the address and history. */
+async function claimPair(code) {
+  history.replaceState(null, "", location.pathname + location.search + "#/");
+  try {
+    const res = await fetch("/api/pair/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.token) throw new Error(j.error || `${res.status}`);
+    token = cleanToken(j.token); store.set(token); start();
+  } catch (e) {
+    signOut(`This phone could not sign in: ${e.message}. On your computer, open Sign in on your phone for a new code, or paste the admin token here.`);
+  }
+}
+
+const pairCode = /^#pair=([0-9a-f]{32})$/.exec(location.hash)?.[1];
+if (pairCode) claimPair(pairCode);
+else if (token) start(); else { $("login").hidden = false; $("token").focus(); }
