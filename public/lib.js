@@ -59,13 +59,56 @@ export function migrateToken(storage) {
 /** First line of a letter, the "subject" in the list. */
 export const firstLine = (text) => String(text ?? "").split("\n")[0].trim();
 
-/** "3 h ago" style age. */
+const LIST_ITEM = /^\s*(?:\d{1,3}[.)]|[-*•])\s/;
+/**
+ * Headline and body of a letter. The first line is a headline only when it reads like one: not a list item and at
+ * most 100 characters. A letter written as a list ("1. ...", "- ...") or as one long paragraph has no headline.
+ */
+export function splitTitle(text) {
+  const s = String(text ?? "").trim();
+  const nl = s.indexOf("\n");
+  const first = (nl < 0 ? s : s.slice(0, nl)).trim();
+  if (!first || LIST_ITEM.test(first) || first.length > 100) return { title: "", body: s };
+  return { title: first, body: nl < 0 ? "" : s.slice(nl + 1).trim() };
+}
+
+/** The whole text on one line, for the list (two lines shown): a list letter shows its points, not only the first. */
+export const summary = (text) => String(text ?? "").replace(/\s+/g, " ").trim();
+
+/** Web letters carry the viewport in `device` ("Chrome 156 · 1440x683 @2x"); a landscape one means a wide screenshot. */
+export function wideShot(i) {
+  if (i.platform !== "web") return false;
+  const m = /(\d+)x(\d+)/.exec(i.device || "");
+  return !!m && Number(m[1]) > Number(m[2]) * 1.15;
+}
+
+/**
+ * The context of a letter in at most five rows: where (the page, or the app screen), on what (device, OS, language),
+ * which build, when, and the element the tester pointed at. The copied brief keeps every field for the agent.
+ */
+export function contextRows(i, now = Date.now()) {
+  const rows = [];
+  if (i.url) {
+    const named = i.screen && !i.screen.startsWith("/") ? ` · ${i.screen}` : ""; // a name from Postbox.setScreen, not the path again
+    rows.push({ k: "Page", v: i.url.replace(/^https?:\/\//, "").replace(/^([^/?#]+)\/$/, "$1") + named, href: i.url });
+  } else if (i.screen) rows.push({ k: "Screen", v: i.screen });
+  // The React Native kit sends the OS as a bare version ("26.6.1"); name it, since it now shares a row with the device.
+  const os = /^\d/.test(i.os || "") && (i.platform === "ios" || i.platform === "android") ? `${i.platform === "ios" ? "iOS" : "Android"} ${i.os}` : i.os;
+  const device = [i.device, os, i.device || os ? "" : i.platform, i.locale].filter(Boolean).join(" · ");
+  if (device) rows.push({ k: "Device", v: device });
+  const build = buildLabel(i);
+  if (build) rows.push({ k: "Build", v: build });
+  if (i.created_at) rows.push({ k: "Received", v: relativeTime(i.created_at, now), title: new Date(i.created_at).toLocaleString() });
+  return rows;
+}
+
 /** Whole days an In progress letter has gone without any change (the agent may have stopped); 0 when it is fresh or not In progress. */
 export function stuckDays(i, now = Date.now()) {
   if (i.status !== "doing" || !i.updated_at) return 0;
   return Math.max(0, Math.floor((now - new Date(i.updated_at).getTime()) / 86_400_000));
 }
 
+/** "3 h ago" style age. */
 export function relativeTime(iso, now = Date.now()) {
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
   if (s < 60) return "just now";
