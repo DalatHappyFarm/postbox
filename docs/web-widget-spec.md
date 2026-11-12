@@ -66,6 +66,8 @@ Slice 2 adds pointing at an element, console errors and failed requests in the b
 - Shadow root plus a constructed stylesheet and CSSOM only: no inline styles, no `innerHTML` (Trusted Types), nothing for a strict CSP to block.
 - The host element is `display: contents !important`, so page rules such as `div { padding }` cannot give it a box; every text property is set explicitly inside, since inherited properties still cross the shadow boundary.
 - The host is appended to `<html>`, not `<body>`, so libraries that replace the body on navigation (Turbo, pjax) keep it.
+- Presses, focus moves, keys and scrolls inside the widget stop at the host (bubble phase) and Esc stops in the window's capture phase, so the page's open dialogs, sheets, popovers and menus stay open for the screenshot, Esc closes only the panel, and the page's scroll lock does not block the panel.
+- This covers libraries that listen on `document` in the bubble phase, such as Radix, MUI's ClickAwayListener and Bootstrap dropdowns; libraries that listen for presses in the capture phase (Headless UI, React Aria) still close their layer when the button is pressed.
 - Loading twice is a no-op; a missing `data-key` warns in the console and does nothing.
 
 ## 7. Dashboard and CLI

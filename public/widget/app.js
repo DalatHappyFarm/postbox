@@ -322,6 +322,17 @@ export function start(script, queue = []) {
   fab.hidden = !showButton(d.button || "auto", location.hostname, tester);
   const dlg = h("dialog", { class: "panel", "aria-labelledby": "pb-title", "data-drop": t.drop });
   root.append(fab, dlg);
+  // A press, focus move, key or scroll inside the widget never reaches the page: its open dialogs, sheets and popovers
+  // would take it for one outside and close before the screenshot (Radix and most libraries listen on document in the
+  // bubble phase), and its scroll lock would block scrolling in the panel. The widget's own listeners sit inside the
+  // shadow root and run first; its document listeners only need the page's events.
+  for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "click", "focusin", "focusout", "keydown", "keyup", "wheel", "touchmove"]) {
+    host.addEventListener(type, (e) => e.stopPropagation());
+  }
+  // Radix takes Esc in the capture phase, closes its top layer and cancels the key, so the panel stayed open: Esc from
+  // inside the widget stops before any page listener. The dialog still closes (a default action), and the widget's only
+  // keydown listener (Cmd or Ctrl+Enter in the note) never needs Esc.
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && e.composedPath().includes(host)) e.stopImmediatePropagation(); }, true);
   // On <html>, not <body>: libraries that swap the body on navigation (Turbo, pjax) keep the widget.
   document.documentElement.append(host);
 
