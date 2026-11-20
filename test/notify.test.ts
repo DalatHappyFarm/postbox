@@ -6,7 +6,7 @@ import { setup } from "./helpers.ts";
 const TG = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHAT_ID: "42" };
 
 describe("letter messages", () => {
-  const l = { id: 24, project_name: "Scar", kind: "bug", text: "Nút Lưu không chạy", screen: "/bao-cao", platform: "web" };
+  const l = { id: 24, project_name: "Scar", kind: "bug", text: "Nút Lưu không chạy", screen: "/bao-cao", platform: "web", marks: 0 };
   it("name the mailbox, the letter, where it came from, the count line and how to decide by replying", () => {
     expect(letterText(l, "3 unread letters in this mailbox", "https://pb.test", true).split("\n")).toEqual([
       "📬 Scar: new letter #24", "Bug · /bao-cao · web", "", "Nút Lưu không chạy", "", "3 unread letters in this mailbox",

@@ -4,7 +4,7 @@
 import {
   STRINGS, DEFAULT_LIMITS, MAX_EDGE, JPEG_QUALITY, THUMB_EDGE, THUMB_QUALITY,
   pickLang, readLimits, showButton, testerFlag, initialFab, snapFab, isDrag, cleanUrl, normalizeScreen, describe, buildMeta, errorKey, sendTimeout, slotsLeft, resizeDims,
-  errText, pushLog, logsForSend, cssPath, openingTag, shortName, MAX_MARKS, BADGE, boxBetween, frameOf, placeBadges, holds,
+  errText, pushLog, logsForSend, cssPath, openingTag, shortName, fieldName, TRAIL_MAX, MAX_MARKS, MAX_HIDES, BADGE, boxBetween, frameOf, placeBadges, holds, overlaps, styleSummary, TRANSPARENT,
 } from "./lib.js";
 
 const KINDS = ["bug", "idea", "other"];
@@ -12,8 +12,9 @@ const MAX_THUMB_BYTES = 64 * 1024;
 const CAPTURE_TIMEOUT_MS = 15_000;
 const SHIFT = "data-postbox-shift";
 const RED = "#e5484d";
+const GREY = "#8e8e93"; // what covers a secret, in the screenshot and on the page while marking
 const MASK = 'input[type="password"], [autocomplete^="cc-"], [data-postbox-mask]';
-const KEY = { consent: "postbox.consent.v2", device: "postbox.device-id.v1", tester: "postbox.tester.v1", draft: "postbox.draft.v1:", fab: "postbox.button-position.v1" };
+const KEY = { consent: "postbox.consent.v3", device: "postbox.device-id.v1", tester: "postbox.tester.v1", draft: "postbox.draft.v1:", fab: "postbox.button-position.v1" };
 
 // localStorage can be missing or throw (private mode, blocked site data): fall back to memory for this page.
 const memory = new Map();
@@ -156,6 +157,7 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-c
 .num { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: #e5484d; color: #fff;
   font: 600 12px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 1.5px #fff; }
 .marks .num { width: 20px; height: 20px; font-size: 11px; box-shadow: none; }
+.muted { margin: 0; color: var(--muted); font-size: 13px; }
 
 .layer { position: fixed; inset: 0; z-index: 2147483646; cursor: crosshair; touch-action: pinch-zoom; direction: ltr;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
@@ -165,19 +167,22 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-c
 .layer .num { position: fixed; cursor: pointer; }
 .layer .num:hover { font-size: 0; }
 .layer .num:hover::after { content: "×"; font-size: 17px; line-height: 1; }
+.layer .hide { position: fixed; padding: 0; border: 0; border-radius: 0; background: #8e8e93; }
 .hl { position: fixed; pointer-events: none; border: 2px solid #e5484d; border-radius: 4px; background: rgba(229, 72, 77, .1);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .8); transition: left .06s, top .06s, width .06s, height .06s; }
 .hl-label { position: absolute; left: -2px; bottom: 100%; margin-bottom: 4px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 2px 6px; border-radius: 4px; background: #e5484d; color: #fff; font: 600 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .hl.low .hl-label { bottom: auto; top: 100%; margin: 4px 0 0; }
 .pickbar { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); cursor: default;
-  display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 6px 6px 6px 16px; border-radius: 22px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 6px 6px 6px 16px; border-radius: 22px;
   background: var(--fab); color: var(--fab-fg); box-shadow: var(--shadow); font: 500 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   transition: opacity .15s; }
 .pickbar span { flex: 1 1 auto; min-width: 0; }
 .pickbar button { flex: none; height: 32px; border: 0; border-radius: 16px; padding: 0 14px; background: color-mix(in srgb, currentColor 16%, transparent); color: inherit; font-weight: 600; }
 .pickbar button:disabled { opacity: .4; cursor: default; }
-.pickbar .go { background: var(--fab-fg); color: var(--fab); }
+.pickbar .seg { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 16px; background: color-mix(in srgb, currentColor 16%, transparent); }
+.pickbar .seg button { height: 28px; padding: 0 12px; background: transparent; }
+.pickbar .go, .pickbar .seg [aria-pressed="true"] { background: var(--fab-fg); color: var(--fab); }
 .pickbar.faint { opacity: .2; }
 @media (prefers-reduced-motion: reduce) { .hl, .pickbar { transition: none; } }
 .err { color: var(--danger); font-size: 13px; }
@@ -220,7 +225,6 @@ async function toJpeg(blob, max, quality) {
   return encode(c, quality);
 }
 
-const TRANSPARENT = /^transparent$|rgba\(.*,\s*0\)$|\/\s*0\)$/;
 function pageBackground() {
   const a = getComputedStyle(document.documentElement).backgroundColor;
   const b = document.body ? getComputedStyle(document.body).backgroundColor : "";
@@ -318,7 +322,7 @@ async function capture(host) {
     g.fillRect(0, 0, out.width, out.height);
     g.drawImage(canvas, 0, 0);
     const k = canvas.width / W;
-    g.fillStyle = "#8e8e93";
+    g.fillStyle = GREY;
     for (const r of masks) g.fillRect(Math.floor(r.left * k), Math.floor(r.top * k), Math.ceil(r.width * k), Math.ceil(r.height * k));
     return { canvas: out, k, w: W, h: H };
   } finally {
@@ -326,11 +330,18 @@ async function capture(host) {
   }
 }
 
-function drawMarks(base, marks) {
+/** The screenshot with the hidden boxes filled in, then each mark's frame and number. */
+function drawMarks(base, entries) {
   const { k } = base;
   const c = h("canvas", { width: base.canvas.width, height: base.canvas.height });
   const g = c.getContext("2d");
   g.drawImage(base.canvas, 0, 0);
+  g.fillStyle = GREY;
+  for (const { rect: r } of entries.filter((m) => m.type === "hide")) {
+    const x = Math.floor(r.x * k), y = Math.floor(r.y * k); // rounded outwards: no edge pixel of a secret stays
+    g.fillRect(x, y, Math.ceil((r.x + r.w) * k) - x, Math.ceil((r.y + r.h) * k) - y);
+  }
+  const marks = entries.filter((m) => m.type !== "hide");
   const badges = placeBadges(marks.map(frameOf), base.w, base.h);
   marks.forEach((m, n) => {
     const f = frameOf(m);
@@ -357,16 +368,31 @@ function drawMarks(base, marks) {
   return c;
 }
 
-// ---------- the page's recent errors and failed requests ----------
+/** Inside a masked part, also across the shadow roots of the page's components. */
+function inMask(el) {
+  for (let n = el; n; n = n.parentElement ?? n.getRootNode().host) if (n.matches(MASK)) return true;
+  return false;
+}
+
+/** Visible text on one line; nothing for a form field, for anything inside a masked part or for an element holding one. */
+function visibleText(el, max) {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || inMask(el) || el.querySelector("[data-postbox-mask]")) return "";
+  // A container's innerText includes its masked parts; textContent also has hidden and script text, so only SVG uses it.
+  return (el.innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+// ---------- the page's recent errors and failed requests, and the tester's last steps ----------
 
 /**
  * Records uncaught errors, unhandled rejections, console.error, resources that did not load and requests that failed
  * (fetch and XMLHttpRequest, status 400 and up or no answer), newest LOG_MAX kept, URLs cleaned like the page address.
+ * Also the tester's last TRAIL_MAX steps: the page opened, page changes, clicks and changed fields, never a typed value or a key.
  * Started only where the button shows (tester mode, staging hosts), so ordinary visitors of a live site run none of it.
  * Requests to Postbox itself and anything during a screenshot (the library fetches images and fonts) are left out.
  */
-function recorder(postbox) {
+function recorder(postbox, host) {
   const list = [];
+  const trail = [];
   let quiet = 0;
   const add = (e) => { if (!quiet) pushLog(list, { ...e, at: Date.now() }); };
   const abs = (u) => { try { return cleanUrl(new URL(String(u), location.href).href) ?? undefined; } catch { return undefined; } };
@@ -410,7 +436,38 @@ function recorder(postbox) {
       return send.apply(this, arguments);
     };
   }
-  return { list, quietly: async (task) => { quiet++; try { return await task(); } finally { quiet--; } } };
+
+  // Steps: these listeners only look, they never stop, cancel or change an event, and the history calls return what the page's own do.
+  const step = (e) => pushLog(trail, { ...e, at: Date.now() }, TRAIL_MAX);
+  let lastUrl = cleanUrl(location.href);
+  if (lastUrl) step({ kind: "load", url: lastUrl });
+  const moved = () => {
+    const now = cleanUrl(location.href);
+    if (now && now !== lastUrl) { lastUrl = now; step({ kind: "navigate", url: now }); }
+  };
+  for (const m of ["pushState", "replaceState"]) {
+    const original = history[m];
+    history[m] = function () { const r = original.apply(this, arguments); try { moved(); } catch { /* never the page's problem */ } return r; };
+  }
+  addEventListener("popstate", moved);
+  addEventListener("hashchange", moved);
+  let labelled = null; // the control a label click also clicks, so one press is one step
+  addEventListener("click", (e) => {
+    const path = e.composedPath();
+    const first = path.find((n) => n instanceof Element);
+    if (!first || path.includes(host)) return;
+    const el = first.closest('a, button, [role="button"], input, select, textarea, label, summary') ?? first;
+    if (labelled && el === labelled.el && Date.now() - labelled.at < 500) { labelled = null; return; }
+    labelled = el instanceof HTMLLabelElement && el.control ? { el: el.control, at: Date.now() } : null;
+    const text = visibleText(el, 60);
+    step({ kind: "click", name: shortName(el.tagName, el.id, [...el.classList]), ...(text ? { text } : {}) });
+  }, true);
+  addEventListener("change", (e) => {
+    const el = e.target;
+    if (!(el instanceof Element) || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || e.composedPath().includes(host)) return;
+    step({ kind: "change", name: fieldName(el.tagName, el.id, [...el.classList], el.getAttribute("name") ?? "") });
+  }, true);
+  return { list, trail, quietly: async (task) => { quiet++; try { return await task(); } finally { quiet--; } } };
 }
 
 // ---------- widget ----------
@@ -445,7 +502,7 @@ export function start(script, queue = []) {
     onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0 || !dragged) open(); },
   }, icon("bubble"));
   fab.hidden = !showButton(d.button || "auto", location.hostname, tester);
-  const rec = fab.hidden ? null : recorder(origin);
+  const rec = fab.hidden ? null : recorder(origin, host);
   const dlg = h("dialog", { class: "panel", "aria-labelledby": "pb-title" });
   root.append(fab, dlg);
   // Picked on every open (sites switch language without a reload); the host's lang reaches screen readers.
@@ -660,7 +717,8 @@ export function start(script, queue = []) {
       h("fieldset", { class: "kinds" }, h("legend", { class: "sr" }, t.kindLabel), KINDS.map((k, i) => h("label", {}, ui.kinds[i], h("span", {}, t.kinds[k])))),
       h("label", { class: "sr", htmlFor: "pb-text" }, t.textLabel), ui.text,
       ui.shot, ui.includeRow, ui.marks, ui.tiles, ui.file,
-      h("p", { class: "ctx" }, `${t.context}: ${[c.screen, c.device, rec?.list.length ? t.logs.replace("{n}", String(rec.list.length)) : null].filter(Boolean).join(" · ")}`),
+      h("p", { class: "ctx" }, `${t.context}: ${[c.screen, c.device, rec?.list.length ? t.logs.replace("{n}", String(rec.list.length)) : null,
+        rec?.trail.length ? t.steps.replace("{n}", String(rec.trail.length)) : null].filter(Boolean).join(" · ")}`),
       ui.err, ui.send);
     paintShot();
     paintTiles();
@@ -670,38 +728,49 @@ export function start(script, queue = []) {
 
   // ---------- mark the problem ----------
 
+  // S.marks holds the numbered marks and the hidden boxes in the order they were made (Undo takes the last of either).
+  const numbered = () => S.marks.filter((m) => m.type !== "hide");
+  const hides = () => S.marks.filter((m) => m.type === "hide");
+  /** A mark on a hidden part sends no text, so the panel shows none either. */
+  const covered = (m) => hides().some((x) => overlaps(frameOf(m), x.rect));
+
   function paintMarkList(focusMark = false) {
     if (!ui.marks) return;
     const quote = (s) => ` "${s.length > 40 ? `${s.slice(0, 39)}…` : s}"`;
-    const rows = S.marks.map((m, n) => h("li", {},
+    const marks = numbered(), nHidden = hides().length;
+    const rows = marks.map((m, n) => h("li", {},
       h("span", { class: "num", "aria-hidden": "true" }, String(n + 1)),
-      h("span", { class: "what" }, m.type === "area" ? `${t.area} ` : "", h("b", {}, m.name), m.type === "element" && m.info.text ? quote(m.info.text) : ""),
+      h("span", { class: "what" }, m.type === "area" ? `${t.area} ` : "", h("b", {}, m.name), m.type === "element" && m.info.text && !covered(m) ? quote(m.info.text) : ""),
       h("button", {
         type: "button", class: "x", title: t.removeMark.replace("{n}", String(n + 1)), "aria-label": t.removeMark.replace("{n}", String(n + 1)),
-        onclick: () => { S.marks.splice(n, 1); redraw(); paintMarkList(true); },
+        onclick: () => { S.marks.splice(S.marks.indexOf(m), 1); redraw(); paintMarkList(true); },
       }, icon("close"))));
-    const more = h("button", { type: "button", class: "add", onclick: markPage }, icon("target"), S.marks.length ? t.markMore : t.mark);
-    ui.marks.replaceChildren(...(rows.length ? [h("ol", { class: "marks" }, rows)] : []), more);
+    const more = h("button", { type: "button", class: "add", onclick: markPage }, icon("target"), marks.length ? t.markMore : t.mark);
+    ui.marks.replaceChildren(...(rows.length ? [h("ol", { class: "marks" }, rows)] : []), ...(nHidden ? [h("p", { class: "muted" }, t.hidden.replace("{n}", String(nHidden)))] : []), more);
     if (focusMark) more.focus();
   }
 
-  /** Selector, opening tag and visible text; never a field's value, nothing from a masked part. */
-  function elementInfo(el, withText) {
+  /** Selector, opening tag, visible text and look (elements only); never a field's value, nothing from a masked part. */
+  function elementInfo(el, isElement) {
     const masked = inMask(el);
-    // A container's innerText includes its masked parts; textContent also has hidden and script text, so only SVG uses it.
-    const hidden = !withText || masked || el.querySelector("[data-postbox-mask]") || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
-    const text = hidden ? "" : (el.innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+    const text = isElement ? visibleText(el, 120) : "";
     // A masked element's title, alt or aria-label can carry what the mask hides.
     const attrs = [...el.attributes].filter((a) => !masked || a.name === "id" || a.name === "class").map((a) => {
       if (a.name !== "href") return [a.name, a.value];
       try { return [a.name, cleanUrl(new URL(a.value, location.href).href) ?? ""]; } catch { return [a.name, ""]; }
     });
-    return { selector: selectorOf(el), html: openingTag(el.tagName, attrs), ...(text ? { text } : {}) };
+    const cs = getComputedStyle(el);
+    const style = isElement ? styleSummary((p) => cs.getPropertyValue(p)) : "";
+    return { selector: selectorOf(el), html: openingTag(el.tagName, attrs), ...(text ? { text } : {}), ...(style ? { style } : {}) };
   }
-  /** Inside a masked part, also across the shadow roots of the page's components. */
-  function inMask(el) {
-    for (let n = el; n; n = n.parentElement ?? n.getRootNode().host) if (n.matches(MASK)) return true;
-    return false;
+  /** What a mark on a hidden part may send: no text, and only id and class, since it may be the hidden part itself. */
+  function plainInfo(m) {
+    const attrs = [...m.el.attributes].filter((a) => a.name === "id" || a.name === "class").map((a) => [a.name, a.value]);
+    return { ...m.info, html: openingTag(m.el.tagName, attrs), text: undefined };
+  }
+  /** The marks as sent: numbered ones only (hidden boxes never leave the browser), plain where a hidden box overlaps their frame. */
+  function sentMarks() {
+    return numbered().map((m) => ({ type: m.type, ...(covered(m) ? plainInfo(m) : m.info), rect: m.rect }));
   }
   function selectorOf(el) {
     const scope = el.getRootNode();
@@ -719,6 +788,8 @@ export function start(script, queue = []) {
     }
     return el;
   }
+  /** An element's box rounded outwards, so hiding it leaves none of its edge pixels showing. */
+  const coverOf = (el) => { const r = el.getBoundingClientRect(), x = Math.floor(r.left), y = Math.floor(r.top); return { x, y, w: Math.ceil(r.right) - x, h: Math.ceil(r.bottom) - y }; };
   /** The smallest element around a dragged box, which names the area for the agent. */
   function around(box) {
     for (let el = under(box.x + box.w / 2, box.y + box.h / 2); el; el = el.parentElement ?? el.getRootNode().host ?? null) {
@@ -734,18 +805,28 @@ export function start(script, queue = []) {
   const help = h("span", { role: "status" });
   const undoBtn = h("button", { type: "button", onclick: () => undo() });
   const doneBtn = h("button", { type: "button", class: "go", onclick: () => finish() });
-  const bar = h("div", { class: "pickbar" }, help, undoBtn, doneBtn);
+  const markBtn = h("button", { type: "button", "aria-pressed": "true", onclick: () => setMode(false) });
+  const hideBtn = h("button", { type: "button", "aria-pressed": "false", onclick: () => setMode(true) });
+  const bar = h("div", { class: "pickbar" }, help, h("div", { class: "seg" }, markBtn, hideBtn), undoBtn, doneBtn);
   const layer = h("div", { class: "layer", hidden: true }, frames, hl, draft, bar);
   root.append(layer);
-  /** @type {{ press: { id: number, x: number, y: number, box: { x: number, y: number, w: number, h: number } | null } | null } | null} */
+  /** @type {{ hide: boolean, press: { id: number, x: number, y: number, box: { x: number, y: number, w: number, h: number } | null } | null } | null} */
   let marking = null;
   let helpTimer = 0;
 
   const setBox = (el, b) => { for (const [k, v] of [["left", b.x], ["top", b.y], ["width", b.w], ["height", b.h]]) el.style.setProperty(k, `${v}px`); };
   function setHelp(msg = "") {
     clearTimeout(helpTimer);
-    help.textContent = msg || (coarse.matches ? t.markHelpTouch : t.markHelp);
+    const touch = coarse.matches;
+    help.textContent = msg || (marking.hide ? (touch ? t.hideHelpTouch : t.hideHelp) : (touch ? t.markHelpTouch : t.markHelp));
     if (msg) helpTimer = setTimeout(setHelp, 2500);
+  }
+  /** Hide: the same gestures cover a part of the screenshot instead of marking it. */
+  function setMode(hide) {
+    marking.hide = hide;
+    markBtn.setAttribute("aria-pressed", String(!hide));
+    hideBtn.setAttribute("aria-pressed", String(hide));
+    setHelp();
   }
   function showHl(el) {
     hl.hidden = !el;
@@ -757,21 +838,33 @@ export function start(script, queue = []) {
   }
   function paintFrames() {
     const W = document.documentElement.clientWidth || innerWidth, H = document.documentElement.clientHeight || innerHeight;
-    const badges = placeBadges(S.marks.map(frameOf), W, H);
-    frames.replaceChildren(...S.marks.flatMap((m, n) => {
+    const marks = numbered();
+    const badges = placeBadges(marks.map(frameOf), W, H);
+    const drop = (m) => { S.marks.splice(S.marks.indexOf(m), 1); paintFrames(); };
+    // Hidden boxes first, so the frames and numbers of marks stay on top of them.
+    frames.replaceChildren(...hides().map((m) => {
+      const box = h("button", { type: "button", class: "hide", title: t.unhide, "aria-label": t.unhide, tabIndex: -1, onclick: () => drop(m) });
+      setBox(box, m.rect);
+      return box;
+    }), ...marks.flatMap((m, n) => {
       const f = frameOf(m), b = badges[n];
       const box = h("div", { class: m.type === "area" ? "mk area" : "mk" });
       setBox(box, f);
       const label = t.removeMark.replace("{n}", String(n + 1));
-      const num = h("button", { type: "button", class: "num", title: label, "aria-label": label, tabIndex: -1, onclick: () => { S.marks.splice(n, 1); paintFrames(); } }, String(n + 1));
+      const num = h("button", { type: "button", class: "num", title: label, "aria-label": label, tabIndex: -1, onclick: () => drop(m) }, String(n + 1));
       setBox(num, { x: b.x, y: b.y, w: BADGE, h: BADGE });
       return [box, num];
     }));
     undoBtn.disabled = !S.marks.length;
   }
   function addMark(type, el, rect) {
-    if (S.marks.length >= MAX_MARKS) { setHelp(t.markFull.replace("{n}", String(MAX_MARKS))); return; }
+    if (numbered().length >= MAX_MARKS) { setHelp(t.markFull.replace("{n}", String(MAX_MARKS))); return; }
     S.marks.push({ type, el, rect, info: elementInfo(el, type === "element"), name: shortName(el.tagName, el.id, [...el.classList]) });
+    paintFrames();
+  }
+  function addHide(rect) {
+    if (hides().length >= MAX_HIDES) { setHelp(t.hideFull.replace("{n}", String(MAX_HIDES))); return; }
+    S.marks.push({ type: "hide", rect });
     paintFrames();
   }
   function toggleElement(el) {
@@ -810,8 +903,10 @@ export function start(script, queue = []) {
     draft.hidden = true;
     bar.classList.remove("faint");
     if (e.type === "pointercancel") return; // two fingers: the browser zooms
-    if (p.box) addMark("area", around(p.box), p.box);
-    else { const el = under(e.clientX, e.clientY); if (el) toggleElement(el); }
+    const el = p.box ? null : under(e.clientX, e.clientY);
+    if (marking.hide) { if (p.box || el) addHide(p.box ?? coverOf(el)); }
+    else if (p.box) addMark("area", around(p.box), p.box);
+    else if (el) toggleElement(el);
   };
   layer.addEventListener("pointerup", release);
   layer.addEventListener("pointercancel", release);
@@ -826,7 +921,7 @@ export function start(script, queue = []) {
     else if (((e.metaKey || e.ctrlKey) && k.toLowerCase() === "z") || k === "Backspace" || k === "Delete") { e.preventDefault(); undo(); }
     else if (k === "Tab") {
       e.preventDefault();
-      const btns = [undoBtn, doneBtn].filter((b) => !b.disabled);
+      const btns = [markBtn, hideBtn, undoBtn, doneBtn].filter((b) => !b.disabled);
       btns[(btns.indexOf(root.activeElement) + (e.shiftKey ? btns.length - 1 : 1)) % btns.length].focus();
     } else if (SCROLL_KEYS.test(k) || (k === " " && !(e.composedPath()[0] instanceof HTMLButtonElement))) e.preventDefault();
   }
@@ -842,12 +937,14 @@ export function start(script, queue = []) {
     saveDraft();
     S.marking = true; // the panel's close event keeps everything
     dlg.close();
-    marking = { press: null };
+    marking = { hide: false, press: null };
     hold(); // the page may have scrolled under the panel's scrim
     addEventListener("scroll", hold, true);
+    markBtn.textContent = t.markMode;
+    hideBtn.textContent = t.hideMode;
     undoBtn.textContent = t.undo;
     doneBtn.textContent = t.markDone;
-    setHelp();
+    setMode(false); // Mark is selected each time marking starts
     paintFrames();
     layer.hidden = false;
     doneBtn.focus();
@@ -946,7 +1043,9 @@ export function start(script, queue = []) {
       const body = new FormData();
       const meta = buildMeta({ ...S.ctx, kind: S.kind, text }, l.max_text);
       if (rec?.list.length) meta.logs = logsForSend(rec.list, Date.now());
-      if (S.marks.length) meta.marks = S.marks.map((m) => ({ type: m.type, ...m.info, rect: m.rect }));
+      if (rec?.trail.length) meta.trail = logsForSend(rec.trail, Date.now());
+      const marks = sentMarks();
+      if (marks.length) meta.marks = marks;
       body.set("meta", JSON.stringify(meta));
       if (shot) body.append("screenshot", shot, "screenshot.jpg");
       S.images.forEach((i, n) => body.append("photo", i.blob, `photo-${n + 1}.jpg`));

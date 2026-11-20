@@ -301,6 +301,7 @@ export function brief(i) {
     "",
     ...fenced(i.text),
     ...(i.marks?.length ? ["", `## Marked on the page (${i.marks.length})`, "", "Numbered like the red frames on the screenshot; boxes are in viewport pixels.", "", ...i.marks.map(markLine)] : []),
+    ...(i.trail?.length ? ["", `## Steps before sending (${i.trail.length})`, "", ...i.trail.map((s) => `- ${stepLine(s)}`)] : []),
     ...(i.note ? ["", "## Decision for the agent", "", i.note] : []),
     ...(i.agent_note ? ["", "## Agent's note", "", i.agent_note] : []),
     ...(i.logs?.length ? ["", `## Page errors and failed requests (${i.logs.length})`, "", ...i.logs.map((e) => `- ${logLine(e)}`)] : []),
@@ -317,11 +318,21 @@ export function logWhat(e) {
 }
 export const logLine = (e) => line(`${e.seconds_before} s before sending, ${e.kind}: ${logWhat(e)}`);
 
-/** One line per part of the page the tester marked, numbered like its frame on the screenshot. Same as the CLI brief. */
+const STEP_VERB = { load: "opened", navigate: "went to", click: "clicked", change: "changed" };
+/** What a step of `trail` (the web widget's last steps before sending) did, in a word. */
+export const stepVerb = (s) => STEP_VERB[s.kind] ?? s.kind;
+const onPage = (s) => s.kind === "load" || s.kind === "navigate";
+/** What it touched, as plain text: the address, or the element's name and, for a click, its text. */
+export const stepWhat = (s) => (onPage(s) ? s.url : `${s.name}${s.kind === "click" && s.text ? ` "${s.text}"` : ""}`);
+/** One line per step: "12 s before sending: clicked `button.pay` "Pay"". Same as the CLI brief. */
+export const stepLine = (s) => line(`${s.seconds_before} s before sending: ${stepVerb(s)} ${onPage(s) ? s.url : [code(s.name), s.kind === "click" && s.text ? `"${s.text}"` : ""].filter(Boolean).join(" ")}`);
+
+/** One line per part of the page the tester marked, numbered like its frame on the screenshot, then its computed style on an indented line. Same as the CLI brief. */
 export function markLine(m, n) {
   const box = m.rect ? `${m.rect.w}x${m.rect.h} at ${m.rect.x},${m.rect.y}` : "";
   const what = [code(line(m.selector)), m.html ? code(line(m.html)) : "", m.text ? `"${line(m.text)}"` : ""].filter(Boolean).join(" ");
-  return m.type === "area" ? `${n + 1}. area${box ? ` ${box}` : ""}, inside ${what}` : `${n + 1}. ${what}${box ? ` (${box})` : ""}`;
+  const head = m.type === "area" ? `${n + 1}. area${box ? ` ${box}` : ""}, inside ${what}` : `${n + 1}. ${what}${box ? ` (${box})` : ""}`;
+  return m.style ? `${head}\n   style: ${code(line(m.style))}` : head;
 }
 
 /** One Markdown document for several letters, in the given order. */

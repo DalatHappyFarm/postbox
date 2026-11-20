@@ -188,7 +188,9 @@ The screen name is the path with ids folded (`/orders/123` becomes `/orders/:id`
 
 What is sent: the note and kind, the screenshot (unless unticked) and images, the page address, the screen, the browser and viewport (`device`), the OS, the language, the build and a random per-browser id.
 Where the button shows (tester mode, staging hosts) the letter also carries the page's 20 most recent errors and failed requests (uncaught errors, rejections, `console.error`, resources that did not load, `fetch` and XHR answers of 400 or more), so the agent sees what the tester's console saw; ordinary visitors of a live site run none of this.
+It also carries the tester's last 10 steps on the page (the page opened, page changes, elements clicked with their short name and text, fields changed with their name), so the agent sees how they got there; typed text, chosen values and key presses are never recorded, and text inside `data-postbox-mask` is left out.
 "Mark the problem" lets the tester click the parts of the page they mean or drag a box around an area (up to 9, numbered): each mark is drawn as a numbered red frame on the screenshot, and the letter gets its CSS selector, opening tag, text and box, so the note can say "1 is cut off, 2 should be blue".
+Its "Hide" switch covers parts of the screenshot with grey boxes before it is sent, for private data on a staging site; a mark on a hidden part sends no text.
 The address loses its user name and password, its fragment (kept only for `#/` routes) and the `feedback` switch, and query values whose names look secret (`token`, `code`, `key`, `session`, `auth`, `password`, `email`, `signature` and similar, `accessToken` included) become `redacted`.
 In the screenshot, password fields, `autocomplete="cc-*"` fields and anything marked `data-postbox-mask` are covered, and the widget itself never appears.
 The panel asks for consent once per browser, keeps an unsent note as a draft, and keeps it when a send fails.
@@ -243,7 +245,7 @@ postbox done 42 --note "fixed in build 78"       # Done, and the note says what 
 ## Privacy and retention
 
 Postbox stores the note, the optional screen name, app version, build, platform, device model (on the web: browser and viewport), OS, locale, the page address on the web (cleaned as described under Web widget) and a random per-install or per-browser id, plus the screenshot and photos the tester chooses to send.
-From the web widget in tester mode it also stores the page's recent error messages and failed request addresses (cleaned the same way, 300 characters each) and the parts of the page the tester marked (never a field's value); error messages are written by the site's own code, so keep personal data out of them.
+From the web widget in tester mode it also stores the page's recent error messages and failed request addresses (cleaned the same way, 300 characters each), the parts of the page the tester marked (never a field's value) and their last steps on the page (clicks and page changes, never typed text); error messages are written by the site's own code, so keep personal data out of them.
 The kit and the web widget ask the tester for consent once and send nothing until they tap Send.
 Images are meant to be deleted after 90 days; schedule that with an R2 lifecycle rule on your bucket (the server does not delete them by itself).
 Mention in-app feedback and attached photos in your own privacy policy.
