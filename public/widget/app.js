@@ -4,13 +4,14 @@
 import {
   STRINGS, DEFAULT_LIMITS, MAX_EDGE, JPEG_QUALITY, THUMB_EDGE, THUMB_QUALITY,
   pickLang, readLimits, showButton, testerFlag, initialFab, snapFab, isDrag, cleanUrl, normalizeScreen, describe, buildMeta, errorKey, sendTimeout, slotsLeft, resizeDims,
-  errText, pushLog, logsForSend, cssPath, openingTag, shortName,
+  errText, pushLog, logsForSend, cssPath, openingTag, shortName, MAX_MARKS, BADGE, boxBetween, frameOf, placeBadges, holds,
 } from "./lib.js";
 
 const KINDS = ["bug", "idea", "other"];
 const MAX_THUMB_BYTES = 64 * 1024;
 const CAPTURE_TIMEOUT_MS = 15_000;
 const SHIFT = "data-postbox-shift";
+const RED = "#e5484d";
 const MASK = 'input[type="password"], [autocomplete^="cc-"], [data-postbox-mask]';
 const KEY = { consent: "postbox.consent.v2", device: "postbox.device-id.v1", tester: "postbox.tester.v1", draft: "postbox.draft.v1:", fab: "postbox.button-position.v1" };
 
@@ -145,22 +146,40 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-c
 @media (pointer: coarse) { .hint { display: none; } }
 
 .ctx { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.point { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; min-width: 0; }
-.pointed { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 100%; font-size: 13px; overflow-wrap: anywhere; }
-.pointed svg { width: 16px; height: 16px; color: #e5484d; }
-.pointed b { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-.link { border: 0; background: none; padding: 2px 0; color: var(--focus); font-size: 13px; font-weight: 500; }
-.link:hover { text-decoration: underline; }
-.hl { position: fixed; z-index: 2147483646; pointer-events: none; border: 2px solid #e5484d; border-radius: 4px; background: rgba(229, 72, 77, .1);
+.marking { display: grid; justify-items: start; gap: 6px; min-width: 0; }
+.marks { display: grid; gap: 2px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.marks li { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.marks .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.marks b { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.marks .x { width: 28px; height: 28px; }
+.marks .x svg { width: 16px; height: 16px; }
+.num { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: #e5484d; color: #fff;
+  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 1.5px #fff; }
+.marks .num { width: 20px; height: 20px; font-size: 11px; box-shadow: none; }
+
+.layer { position: fixed; inset: 0; z-index: 2147483646; cursor: crosshair; touch-action: pinch-zoom; direction: ltr;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.mk { position: fixed; pointer-events: none; border: 2px solid #e5484d; border-radius: 4px; background: rgba(229, 72, 77, .08); box-shadow: 0 0 0 1px rgba(255, 255, 255, .8); }
+.mk.area { border-style: dashed; border-radius: 2px; }
+.mk.draft { background: rgba(229, 72, 77, .14); }
+.layer .num { position: fixed; cursor: pointer; }
+.layer .num:hover { font-size: 0; }
+.layer .num:hover::after { content: "×"; font-size: 17px; line-height: 1; }
+.hl { position: fixed; pointer-events: none; border: 2px solid #e5484d; border-radius: 4px; background: rgba(229, 72, 77, .1);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .8); transition: left .06s, top .06s, width .06s, height .06s; }
 .hl-label { position: absolute; left: -2px; bottom: 100%; margin-bottom: 4px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 2px 6px; border-radius: 4px; background: #e5484d; color: #fff; font: 600 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .hl.low .hl-label { bottom: auto; top: 100%; margin: 4px 0 0; }
-.pickbar { position: fixed; z-index: 2147483647; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 24px); padding: 6px 6px 6px 16px; border-radius: 999px;
-  background: var(--fab); color: var(--fab-fg); box-shadow: var(--shadow); font: 500 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-.pickbar button { flex: none; border: 0; border-radius: 999px; padding: 6px 12px; background: color-mix(in srgb, currentColor 16%, transparent); color: inherit; font-weight: 600; }
-@media (prefers-reduced-motion: reduce) { .hl { transition: none; } }
+.pickbar { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); cursor: default;
+  display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 6px 6px 6px 16px; border-radius: 22px;
+  background: var(--fab); color: var(--fab-fg); box-shadow: var(--shadow); font: 500 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  transition: opacity .15s; }
+.pickbar span { flex: 1 1 auto; min-width: 0; }
+.pickbar button { flex: none; height: 32px; border: 0; border-radius: 16px; padding: 0 14px; background: color-mix(in srgb, currentColor 16%, transparent); color: inherit; font-weight: 600; }
+.pickbar button:disabled { opacity: .4; cursor: default; }
+.pickbar .go { background: var(--fab-fg); color: var(--fab); }
+.pickbar.faint { opacity: .2; }
+@media (prefers-reduced-motion: reduce) { .hl, .pickbar { transition: none; } }
 .err { color: var(--danger); font-size: 13px; }
 .primary { width: 100%; height: 44px; border: 0; border-radius: 10px; background: var(--fg); color: var(--bg); font-size: 15px; font-weight: 600; }
 .primary:hover:not(:disabled) { opacity: .9; }
@@ -254,11 +273,8 @@ const dataImagesAllowed = () => (dataImages ??= new Promise((res) => {
   img.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 }));
 
-/**
- * The visible part of the page as a JPEG, without the widget; secrets are blanked in the clone and covered in the image.
- * `frame` (viewport px) is drawn as a red box: the element the tester pointed at.
- */
-async function capture(host, frame = null) {
+/** The visible part of the page without the widget, secrets covered; `k` is canvas px per viewport px. */
+async function capture(host) {
   const de = document.documentElement;
   const W = de.clientWidth || innerWidth, H = de.clientHeight || innerHeight;
   const sx = scrollX, sy = scrollY;
@@ -304,16 +320,41 @@ async function capture(host, frame = null) {
     const k = canvas.width / W;
     g.fillStyle = "#8e8e93";
     for (const r of masks) g.fillRect(Math.floor(r.left * k), Math.floor(r.top * k), Math.ceil(r.width * k), Math.ceil(r.height * k));
-    if (frame) {
-      const pad = 4, lw = Math.max(2, Math.round(3 * k));
-      g.strokeStyle = "#e5484d";
-      g.lineWidth = lw;
-      g.strokeRect((frame.left - pad) * k, (frame.top - pad) * k, (frame.width + 2 * pad) * k, (frame.height + 2 * pad) * k);
-    }
-    return await encode(out, JPEG_QUALITY);
+    return { canvas: out, k, w: W, h: H };
   } finally {
     for (const n of marked) n.removeAttribute(SHIFT);
   }
+}
+
+function drawMarks(base, marks) {
+  const { k } = base;
+  const c = h("canvas", { width: base.canvas.width, height: base.canvas.height });
+  const g = c.getContext("2d");
+  g.drawImage(base.canvas, 0, 0);
+  const badges = placeBadges(marks.map(frameOf), base.w, base.h);
+  marks.forEach((m, n) => {
+    const f = frameOf(m);
+    g.strokeStyle = RED;
+    g.lineWidth = Math.max(2, Math.round(3 * k));
+    g.setLineDash(m.type === "area" ? [8 * k, 5 * k] : []);
+    g.strokeRect(f.x * k, f.y * k, f.w * k, f.h * k);
+    const b = badges[n];
+    const r = (BADGE / 2) * k, cx = b.x * k + r, cy = b.y * k + r;
+    g.setLineDash([]);
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.fillStyle = RED;
+    g.fill();
+    g.lineWidth = 1.5 * k;
+    g.strokeStyle = "#fff";
+    g.stroke();
+    g.fillStyle = "#fff";
+    g.font = `600 ${Math.round(12 * k)}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(String(n + 1), cx, cy + 0.5 * k);
+  });
+  return c;
 }
 
 // ---------- the page's recent errors and failed requests ----------
@@ -378,7 +419,7 @@ export function start(script, queue = []) {
   const d = script.dataset;
   const key = d.key;
   const origin = new URL(script.src, location.href).origin;
-  const t = STRINGS[pickLang(d.lang, document.documentElement.lang, navigator.languages || [navigator.language])];
+  let t = STRINGS.en; // set by applyLang
   const fetchInit = { credentials: "omit", referrerPolicy: "no-referrer" }; // the cleaned URL is sent in meta, never the raw one in Referer
 
   const saved = store.get(KEY.tester);
@@ -400,13 +441,23 @@ export function start(script, queue = []) {
   root.adoptedStyleSheets = [sheet];
   let dragged = false; // the click that ends a drag must not open the panel; a keyboard click (detail 0) always does
   const fab = h("button", {
-    class: "fab", type: "button", title: `${t.button} · ${t.move}`, "aria-label": t.button,
+    class: "fab", type: "button",
     onclick: (/** @type {MouseEvent} */ e) => { if (e.detail === 0 || !dragged) open(); },
   }, icon("bubble"));
   fab.hidden = !showButton(d.button || "auto", location.hostname, tester);
   const rec = fab.hidden ? null : recorder(origin);
-  const dlg = h("dialog", { class: "panel", "aria-labelledby": "pb-title", "data-drop": t.drop });
+  const dlg = h("dialog", { class: "panel", "aria-labelledby": "pb-title" });
   root.append(fab, dlg);
+  // Picked on every open (sites switch language without a reload); the host's lang reaches screen readers.
+  const applyLang = () => {
+    const lang = pickLang(d.lang, document.documentElement.lang, navigator.languages || [navigator.language]);
+    t = STRINGS[lang];
+    host.lang = lang;
+    fab.title = `${t.button} · ${t.move}`;
+    fab.setAttribute("aria-label", t.button);
+    dlg.setAttribute("data-drop", t.drop);
+  };
+  applyLang();
   // A press, focus move, key or scroll inside the widget never reaches the page: its open dialogs, sheets and popovers
   // would take it for one outside and close before the screenshot (Radix and most libraries listen on document in the
   // bubble phase), and its scroll lock would block scrolling in the panel. The widget's own listeners sit inside the
@@ -416,8 +467,12 @@ export function start(script, queue = []) {
   }
   // Radix takes Esc in the capture phase, closes its top layer and cancels the key, so the panel stayed open: Esc from
   // inside the widget stops before any page listener. The dialog still closes (a default action), and the widget's only
-  // keydown listener (Cmd or Ctrl+Enter in the note) never needs Esc.
-  addEventListener("keydown", (e) => { if (e.key === "Escape" && e.composedPath().includes(host)) e.stopImmediatePropagation(); }, true);
+  // keydown listener (Cmd or Ctrl+Enter in the note) never needs Esc. While marking, every key is the widget's.
+  addEventListener("keydown", (e) => {
+    if (marking && !host.isConnected) stopMarking(); // the page removed the widget: give it its keys back
+    else if (marking) markKey(e);
+    else if (e.key === "Escape" && e.composedPath().includes(host)) e.stopImmediatePropagation();
+  }, true);
   // On <html>, not <body>: libraries that swap the body on navigation (Turbo, pjax) keep the widget.
   document.documentElement.append(host);
 
@@ -483,7 +538,8 @@ export function start(script, queue = []) {
   theme();
 
   // ---------- state ----------
-  const S = { step: "form", kind: "bug", shot: null, shotTask: null, include: true, images: [], ctx: null, busy: false, run: 0 };
+  // shot: the JPEG as sent ("pending", "failed" or a Blob); base: the screenshot taken on open, which marks are drawn on.
+  const S = { step: "form", kind: "bug", shot: null, shotTask: null, base: null, baseTask: null, include: true, images: [], marks: [], ctx: null, busy: false, run: 0 };
   let ui = {};
   const draftKey = KEY.draft + key;
   const readDraft = () => { try { return JSON.parse(store.get(draftKey) || "{}") || {}; } catch { return {}; } };
@@ -500,13 +556,16 @@ export function start(script, queue = []) {
   }
 
   function open(kind) {
+    if (marking) return; // Postbox.open() from the page while the tester marks
     if (dlg.open) { if (KINDS.includes(kind)) setKind(kind); ui.text?.focus(); return; }
     theme();
+    applyLang();
     const run = ++S.run;
     S.ctx = context();
     const draft = readDraft();
     S.kind = KINDS.includes(kind) ? kind : KINDS.includes(draft.kind) ? draft.kind : "bug";
-    S.include = true; S.images = []; S.busy = false; S.element = null;
+    S.include = true; S.images = []; S.busy = false; S.marks = [];
+    S.at = { x: scrollX, y: scrollY }; // where the screenshot was taken; marking happens at the same place
     shoot(); // measured before the panel opens; the clone itself skips the widget
     loadLimits();
     S.step = store.get(KEY.consent) === "1" ? "form" : "consent";
@@ -515,33 +574,47 @@ export function start(script, queue = []) {
     dlg.showModal();
   }
 
-  /** Take the screenshot (again), with a red frame around the pointed element when there is one. */
-  function shoot(frame = null) {
+  /** Taken once on open; marks are drawn on it, so a toast gone by the time marking is done stays in the picture. */
+  function shoot() {
     const run = S.run;
-    if (S.shotUrl) URL.revokeObjectURL(S.shotUrl);
-    S.shot = "pending"; S.shotUrl = null;
-    const task = () => capture(host, frame);
-    S.shotTask = (rec ? rec.quietly(task) : task()).then(
-      (b) => { if (run === S.run) { S.shot = b; S.shotUrl = URL.createObjectURL(b); } },
-      (e) => { if (run === S.run) S.shot = "failed"; console.warn("Postbox: screenshot failed.", e); },
-    ).then(() => { if (run === S.run) { paintShot(); paintTiles(); } });
+    S.base = null; S.shot = "pending";
+    const task = () => capture(host);
+    S.baseTask = (rec ? rec.quietly(task) : task()).then(
+      (c) => { if (run === S.run) S.base = c; },
+      (e) => console.warn("Postbox: screenshot failed.", e));
+    redraw();
+  }
+
+  /** The JPEG as sent: the screenshot with the current marks. */
+  function redraw() {
+    const run = S.run;
+    const marks = S.marks.map(({ type, rect }) => ({ type, rect }));
+    const task = S.shotTask = S.baseTask
+      .then(() => (S.base ? encode(drawMarks(S.base, marks), JPEG_QUALITY) : null))
+      .catch((e) => { console.warn("Postbox: screenshot failed.", e); return null; })
+      .then((b) => {
+        if (run !== S.run || task !== S.shotTask) return;
+        if (S.shotUrl) URL.revokeObjectURL(S.shotUrl);
+        S.shot = b ?? "failed"; S.shotUrl = b ? URL.createObjectURL(b) : null;
+        paintShot(); paintTiles();
+      });
   }
 
   function close() { if (dlg.open) dlg.close(); }
   dlg.addEventListener("close", () => {
-    if (S.picking) return; // closed only while the tester points at the page; everything stays
+    if (S.marking) return; // closed only while the tester marks the page; everything stays
     fab.classList.remove("away");
     S.run++;
     clearTimeout(S.doneTimer);
     if (S.shotUrl) URL.revokeObjectURL(S.shotUrl);
     S.images.forEach((i) => URL.revokeObjectURL(i.url));
-    S.shot = S.shotUrl = null; S.images = [];
+    S.shot = S.shotUrl = S.base = null; S.images = []; S.marks = [];
     dlg.replaceChildren();
     ui = {};
   });
-  // A click on the scrim (outside the panel box) closes, like a sheet.
+  // A click on the scrim closes, like a sheet, unless marks or images would be lost.
   dlg.addEventListener("click", (e) => {
-    if (e.target !== dlg) return;
+    if (e.target !== dlg || S.marks.length || S.images.length) return;
     const r = dlg.getBoundingClientRect();
     if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) close();
   });
@@ -579,113 +652,220 @@ export function start(script, queue = []) {
     ui.includeRow = h("label", { class: "check" }, ui.include, t.include);
     ui.tiles = h("div", { class: "tiles" });
     ui.file = h("input", { type: "file", accept: "image/*", multiple: true, hidden: true, onchange: () => { addFiles(ui.file.files); ui.file.value = ""; } });
-    ui.point = h("div", { class: "point" });
+    ui.marks = h("div", { class: "marking" });
     ui.err = h("p", { class: "err", role: "alert", hidden: true });
     ui.send = h("button", { class: "primary", type: "submit" }, t.send);
     const c = S.ctx;
     const f = h("form", { class: "body", novalidate: true, onsubmit: (e) => { e.preventDefault(); send(); } },
       h("fieldset", { class: "kinds" }, h("legend", { class: "sr" }, t.kindLabel), KINDS.map((k, i) => h("label", {}, ui.kinds[i], h("span", {}, t.kinds[k])))),
       h("label", { class: "sr", htmlFor: "pb-text" }, t.textLabel), ui.text,
-      ui.shot, ui.includeRow, ui.point, ui.tiles, ui.file,
+      ui.shot, ui.includeRow, ui.marks, ui.tiles, ui.file,
       h("p", { class: "ctx" }, `${t.context}: ${[c.screen, c.device, rec?.list.length ? t.logs.replace("{n}", String(rec.list.length)) : null].filter(Boolean).join(" · ")}`),
       ui.err, ui.send);
     paintShot();
     paintTiles();
-    paintPoint();
+    paintMarkList();
     return f;
   }
 
-  // ---------- point at the part of the page with the problem ----------
+  // ---------- mark the problem ----------
 
-  function paintPoint() {
-    if (!ui.point) return;
-    const e = S.element;
-    const quote = e?.info.text ? ` "${e.info.text.length > 40 ? `${e.info.text.slice(0, 39)}…` : e.info.text}"` : "";
-    ui.point.replaceChildren(...(e
-      ? [h("span", { class: "pointed" }, icon("target"), h("span", {}, `${t.pointed} `, h("b", {}, e.name), quote)),
-        h("button", { type: "button", class: "link", onclick: pointAt }, t.repoint),
-        h("button", { type: "button", class: "link", onclick: unpoint }, t.unpoint)]
-      : [h("button", { type: "button", class: "add", onclick: pointAt }, icon("target"), t.point)]));
+  function paintMarkList(focusMark = false) {
+    if (!ui.marks) return;
+    const quote = (s) => ` "${s.length > 40 ? `${s.slice(0, 39)}…` : s}"`;
+    const rows = S.marks.map((m, n) => h("li", {},
+      h("span", { class: "num", "aria-hidden": "true" }, String(n + 1)),
+      h("span", { class: "what" }, m.type === "area" ? `${t.area} ` : "", h("b", {}, m.name), m.type === "element" && m.info.text ? quote(m.info.text) : ""),
+      h("button", {
+        type: "button", class: "x", title: t.removeMark.replace("{n}", String(n + 1)), "aria-label": t.removeMark.replace("{n}", String(n + 1)),
+        onclick: () => { S.marks.splice(n, 1); redraw(); paintMarkList(true); },
+      }, icon("close"))));
+    const more = h("button", { type: "button", class: "add", onclick: markPage }, icon("target"), S.marks.length ? t.markMore : t.mark);
+    ui.marks.replaceChildren(...(rows.length ? [h("ol", { class: "marks" }, rows)] : []), more);
+    if (focusMark) more.focus();
   }
 
   /** Selector, opening tag and visible text; never a field's value, nothing from a masked part. */
-  function elementInfo(el) {
-    const hidden = el.closest(MASK) || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
-    const text = hidden ? "" : (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120);
-    const attrs = [...el.attributes].map((a) => {
+  function elementInfo(el, withText) {
+    const masked = inMask(el);
+    // A container's innerText includes its masked parts; textContent also has hidden and script text, so only SVG uses it.
+    const hidden = !withText || masked || el.querySelector("[data-postbox-mask]") || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+    const text = hidden ? "" : (el.innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+    // A masked element's title, alt or aria-label can carry what the mask hides.
+    const attrs = [...el.attributes].filter((a) => !masked || a.name === "id" || a.name === "class").map((a) => {
       if (a.name !== "href") return [a.name, a.value];
       try { return [a.name, cleanUrl(new URL(a.value, location.href).href) ?? ""]; } catch { return [a.name, ""]; }
     });
-    const count = (sel) => { try { return document.querySelectorAll(sel).length; } catch { return 0; } };
-    return { selector: cssPath(el, count), html: openingTag(el.tagName, attrs), ...(text ? { text } : {}) };
+    return { selector: selectorOf(el), html: openingTag(el.tagName, attrs), ...(text ? { text } : {}) };
+  }
+  /** Inside a masked part, also across the shadow roots of the page's components. */
+  function inMask(el) {
+    for (let n = el; n; n = n.parentElement ?? n.getRootNode().host) if (n.matches(MASK)) return true;
+    return false;
+  }
+  function selectorOf(el) {
+    const scope = el.getRootNode();
+    const sel = cssPath(el, (s) => { try { return scope.querySelectorAll(s).length; } catch { return 0; } });
+    return scope instanceof ShadowRoot ? `${selectorOf(scope.host)} >>> ${sel}` : sel; // >>> enters a shadow root
   }
 
+  /** The page element at a point, beneath the marking layer and inside open shadow roots. */
+  function under(x, y) {
+    let el = document.elementsFromPoint(x, y).find((n) => n !== host && n !== document.documentElement && n !== document.body) ?? null;
+    for (let r = el?.shadowRoot; r; r = el.shadowRoot) {
+      const inner = r.elementsFromPoint(x, y).find((n) => n !== el && r.contains(n));
+      if (!inner) break;
+      el = inner;
+    }
+    return el;
+  }
+  /** The smallest element around a dragged box, which names the area for the agent. */
+  function around(box) {
+    for (let el = under(box.x + box.w / 2, box.y + box.h / 2); el; el = el.parentElement ?? el.getRootNode().host ?? null) {
+      if (holds(el.getBoundingClientRect(), box)) return el;
+    }
+    return document.body ?? document.documentElement;
+  }
+
+  // The layer takes every press and holds the page still: marks are drawn on the screenshot taken at this scroll position.
   const hl = h("div", { class: "hl", hidden: true }, h("span", { class: "hl-label" }));
-  const bar = h("div", { class: "pickbar", hidden: true, role: "status" }, h("span", {}, t.pointHelp), h("button", { type: "button", onclick: () => endPick(null) }, t.pointCancel));
-  root.append(hl, bar);
-  /** @type {{ resolve: (el: Element | null) => void, target: Element | null } | null} */
-  let picking = null;
-  const under = (x, y) => {
-    const el = document.elementFromPoint(x, y);
-    return el && el !== host && el !== document.documentElement && el !== document.body ? el : null;
-  };
-  const showHl = (el) => {
-    if (!picking) return;
-    picking.target = el;
+  const draft = h("div", { class: "mk area draft", hidden: true });
+  const frames = h("div");
+  const help = h("span", { role: "status" });
+  const undoBtn = h("button", { type: "button", onclick: () => undo() });
+  const doneBtn = h("button", { type: "button", class: "go", onclick: () => finish() });
+  const bar = h("div", { class: "pickbar" }, help, undoBtn, doneBtn);
+  const layer = h("div", { class: "layer", hidden: true }, frames, hl, draft, bar);
+  root.append(layer);
+  /** @type {{ press: { id: number, x: number, y: number, box: { x: number, y: number, w: number, h: number } | null } | null } | null} */
+  let marking = null;
+  let helpTimer = 0;
+
+  const setBox = (el, b) => { for (const [k, v] of [["left", b.x], ["top", b.y], ["width", b.w], ["height", b.h]]) el.style.setProperty(k, `${v}px`); };
+  function setHelp(msg = "") {
+    clearTimeout(helpTimer);
+    help.textContent = msg || (coarse.matches ? t.markHelpTouch : t.markHelp);
+    if (msg) helpTimer = setTimeout(setHelp, 2500);
+  }
+  function showHl(el) {
     hl.hidden = !el;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    for (const [k, v] of [["left", r.left], ["top", r.top], ["width", r.width], ["height", r.height]]) hl.style.setProperty(k, `${v}px`);
+    setBox(hl, { x: r.left, y: r.top, w: r.width, h: r.height });
     hl.classList.toggle("low", r.top < 28); // the label goes under a box at the top edge
     hl.firstChild.textContent = shortName(el.tagName, el.id, [...el.classList]);
-  };
-  const outside = (e) => !e.composedPath().includes(host);
-  // While pointing, presses on the page do nothing there: no link opens, no menu closes. Touch events are only stopped
-  // (not cancelled), so the page still scrolls and a tap still makes the click that picks.
-  const swallow = (e) => { if (!picking || !outside(e)) return; e.stopImmediatePropagation(); if (!e.type.startsWith("touch")) e.preventDefault(); };
-  const onMove = (e) => { if (picking && outside(e) && e.pointerType !== "touch") showHl(under(e.clientX, e.clientY)); };
-  const onClick = (e) => { if (!picking || !outside(e)) return; swallow(e); const el = under(e.clientX, e.clientY); if (el) endPick(el); };
-  const onKey = (e) => {
-    if (!picking) return;
-    if (e.key === "Escape") { swallow(e); endPick(null); } else if (e.key === "Enter" && picking.target) { swallow(e); endPick(picking.target); }
-  };
-  const onScroll = () => { if (picking?.target) showHl(picking.target); };
-  const STOP = ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick", "contextmenu", "auxclick", "submit"];
-  const listen = (on) => {
-    const m = on ? addEventListener : removeEventListener;
-    m("pointermove", onMove, true); m("click", onClick, true); m("keydown", onKey, true); m("scroll", onScroll, true);
-    for (const type of STOP) m(type, swallow, true);
-  };
-  function pick() {
-    return new Promise((resolve) => { picking = { resolve, target: null }; listen(true); bar.hidden = false; });
   }
-  function endPick(el) {
-    if (!picking) return;
-    const { resolve } = picking;
-    picking = null; listen(false); bar.hidden = hl.hidden = true;
-    resolve(el);
+  function paintFrames() {
+    const W = document.documentElement.clientWidth || innerWidth, H = document.documentElement.clientHeight || innerHeight;
+    const badges = placeBadges(S.marks.map(frameOf), W, H);
+    frames.replaceChildren(...S.marks.flatMap((m, n) => {
+      const f = frameOf(m), b = badges[n];
+      const box = h("div", { class: m.type === "area" ? "mk area" : "mk" });
+      setBox(box, f);
+      const label = t.removeMark.replace("{n}", String(n + 1));
+      const num = h("button", { type: "button", class: "num", title: label, "aria-label": label, tabIndex: -1, onclick: () => { S.marks.splice(n, 1); paintFrames(); } }, String(n + 1));
+      setBox(num, { x: b.x, y: b.y, w: BADGE, h: BADGE });
+      return [box, num];
+    }));
+    undoBtn.disabled = !S.marks.length;
+  }
+  function addMark(type, el, rect) {
+    if (S.marks.length >= MAX_MARKS) { setHelp(t.markFull.replace("{n}", String(MAX_MARKS))); return; }
+    S.marks.push({ type, el, rect, info: elementInfo(el, type === "element"), name: shortName(el.tagName, el.id, [...el.classList]) });
+    paintFrames();
+  }
+  function toggleElement(el) {
+    const at = S.marks.findIndex((m) => m.type === "element" && m.el === el);
+    if (at >= 0) { S.marks.splice(at, 1); paintFrames(); return; }
+    const r = el.getBoundingClientRect();
+    addMark("element", el, { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+  }
+  function undo() {
+    if (!S.marks.length) return;
+    S.marks.pop();
+    paintFrames();
+    if (undoBtn.disabled) doneBtn.focus();
   }
 
-  async function pointAt() {
-    if (S.busy || picking) return;
-    saveDraft();
-    S.picking = true;
-    dlg.close();
-    const el = await pick();
-    S.picking = false;
-    if (el) {
-      S.element = { info: elementInfo(el), name: shortName(el.tagName, el.id, [...el.classList]) };
-      shoot(el.getBoundingClientRect());
-    }
-    dlg.showModal();
-    paintShot(); paintTiles(); paintPoint();
-    ui.point?.querySelector("button")?.focus();
+  layer.addEventListener("pointerdown", (e) => {
+    if (!marking || e.target !== layer || !e.isPrimary || e.button !== 0) return;
+    marking.press = { id: e.pointerId, x: e.clientX, y: e.clientY, box: null };
+    layer.setPointerCapture(e.pointerId);
+  });
+  layer.addEventListener("pointermove", (e) => {
+    if (!marking) return;
+    const p = marking.press;
+    if (!p) { showHl(e.target === layer && e.pointerType !== "touch" ? under(e.clientX, e.clientY) : null); return; }
+    if (e.pointerId !== p.id || (!p.box && !isDrag(e.clientX - p.x, e.clientY - p.y))) return;
+    p.box = boxBetween(p.x, p.y, e.clientX, e.clientY);
+    hl.hidden = true;
+    bar.classList.add("faint"); // a box may go under the bar
+    setBox(draft, p.box);
+    draft.hidden = false;
+  });
+  const release = (/** @type {PointerEvent} */ e) => {
+    const p = marking?.press;
+    if (!p || e.pointerId !== p.id) return;
+    marking.press = null;
+    draft.hidden = true;
+    bar.classList.remove("faint");
+    if (e.type === "pointercancel") return; // two fingers: the browser zooms
+    if (p.box) addMark("area", around(p.box), p.box);
+    else { const el = under(e.clientX, e.clientY); if (el) toggleElement(el); }
+  };
+  layer.addEventListener("pointerup", release);
+  layer.addEventListener("pointercancel", release);
+  layer.addEventListener("pointerleave", () => { if (!marking?.press) hl.hidden = true; });
+  layer.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
+
+  const SCROLL_KEYS = /^(Arrow(Up|Down|Left|Right)|Page(Up|Down)|Home|End)$/;
+  function markKey(e) {
+    e.stopImmediatePropagation(); // the page's shortcuts wait until marking is done
+    const k = e.key;
+    if (k === "Escape") { e.preventDefault(); finish(); }
+    else if (((e.metaKey || e.ctrlKey) && k.toLowerCase() === "z") || k === "Backspace" || k === "Delete") { e.preventDefault(); undo(); }
+    else if (k === "Tab") {
+      e.preventDefault();
+      const btns = [undoBtn, doneBtn].filter((b) => !b.disabled);
+      btns[(btns.indexOf(root.activeElement) + (e.shiftKey ? btns.length - 1 : 1)) % btns.length].focus();
+    } else if (SCROLL_KEYS.test(k) || (k === " " && !(e.composedPath()[0] instanceof HTMLButtonElement))) e.preventDefault();
   }
-  function unpoint() {
-    S.element = null;
-    shoot();
-    paintShot(); paintPoint();
-    ui.point?.querySelector("button")?.focus();
+  // Scrolling that still gets through (a scroll bar, a script) is undone.
+  const hold = () => {
+    if (marking && !host.isConnected) return stopMarking(); // the page removed the widget: give it its scroll back
+    if (!marking || (scrollX === S.at.x && scrollY === S.at.y)) return;
+    try { scrollTo({ left: S.at.x, top: S.at.y, behavior: "instant" }); } catch { scrollTo(S.at.x, S.at.y); }
+  };
+
+  function markPage() {
+    if (S.busy || marking) return;
+    saveDraft();
+    S.marking = true; // the panel's close event keeps everything
+    dlg.close();
+    marking = { press: null };
+    hold(); // the page may have scrolled under the panel's scrim
+    addEventListener("scroll", hold, true);
+    undoBtn.textContent = t.undo;
+    doneBtn.textContent = t.markDone;
+    setHelp();
+    paintFrames();
+    layer.hidden = false;
+    doneBtn.focus();
+  }
+  function stopMarking() {
+    marking = null;
+    removeEventListener("scroll", hold, true);
+    clearTimeout(helpTimer);
+    layer.hidden = hl.hidden = draft.hidden = true;
+    frames.replaceChildren();
+    S.marking = false;
+  }
+  function finish() {
+    if (!marking) return;
+    stopMarking();
+    dlg.showModal();
+    redraw();
+    paintMarkList(true);
   }
 
   function paintShot() {
@@ -756,7 +936,8 @@ export function start(script, queue = []) {
     busy(true);
     try {
       const l = await loadLimits();
-      if (S.include && S.shot === "pending") await S.shotTask; // sent the moment the screenshot is ready
+      // Wait for the screenshot with the current marks (removing one meanwhile starts a newer one).
+      for (let task; S.include && task !== S.shotTask;) { task = S.shotTask; await task; }
       if (run !== S.run) return;
       const shot = S.include && shotOk() ? S.shot : null;
       const blobs = [...(shot ? [shot] : []), ...S.images.map((i) => i.blob)];
@@ -765,7 +946,7 @@ export function start(script, queue = []) {
       const body = new FormData();
       const meta = buildMeta({ ...S.ctx, kind: S.kind, text }, l.max_text);
       if (rec?.list.length) meta.logs = logsForSend(rec.list, Date.now());
-      if (S.element) meta.element = S.element.info;
+      if (S.marks.length) meta.marks = S.marks.map((m) => ({ type: m.type, ...m.info, rect: m.rect }));
       body.set("meta", JSON.stringify(meta));
       if (shot) body.append("screenshot", shot, "screenshot.jpg");
       S.images.forEach((i, n) => body.append("photo", i.blob, `photo-${n + 1}.jpg`));

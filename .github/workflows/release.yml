@@ -12,24 +12,40 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency: release
 
 jobs:
-  publish:
+  # Tests run third-party code (vitest, wrangler), so they run without the publish permission.
+  check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - run: npm install -g npm@11 pnpm@12
+      - run: npm install -g pnpm@12.16.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm install -g npm@11.21.3 pnpm@12.16.1
+      - run: pnpm install --frozen-lockfile
       - run: pnpm build:cli
       - name: Publish new versions
         run: |

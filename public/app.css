@@ -222,7 +222,10 @@ body.triage .shell #detail{display:block}
 .ctx dd a{color:var(--br)}
 .ctx dt:nth-last-of-type(1),.ctx dd:last-of-type{border-bottom:0}
 button.del{color:var(--dnt)}button.del:hover{border-color:var(--dnbd)}
-.ctx dd.elem code{font:12px/18px var(--mono);overflow-wrap:anywhere}
+.ctx ol.marks{margin:0;padding:0;list-style:none;counter-reset:mark;display:grid;gap:4px}
+.ctx ol.marks li{counter-increment:mark;display:block;position:relative;padding-left:26px;min-height:18px}
+.ctx ol.marks li::before{content:counter(mark);position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;background:#E5484D;color:#fff;font:600 11px/18px var(--display);text-align:center;font-variant-numeric:tabular-nums}
+.ctx ol.marks code{font:12px/18px var(--mono);overflow-wrap:anywhere}
 .logs{margin:12px 0 0;border:1px solid var(--bd);border-radius:8px;font-size:13px;overflow:hidden}
 .logs summary{padding:6px 12px;background:var(--sunk);color:var(--t2);font-weight:600;cursor:pointer}
 .logs ul{list-style:none;margin:0;padding:0}

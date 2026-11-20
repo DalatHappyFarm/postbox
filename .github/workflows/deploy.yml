@@ -3,7 +3,7 @@
 # smoke test (scripts/deploy.sh) stops the run before production.
 # Needs the repository variable CLOUDFLARE_ACCOUNT_ID and the secrets CLOUDFLARE_API_TOKEN
 # (Account > Cloudflare Pages > Edit), DATABASE_URL_STAGING and DATABASE_URL_PRODUCTION.
-# Without the variable (a fork, say) the job is skipped. The Pages project is `name` in wrangler.toml.
+# Without the variable (a fork, say) the job is skipped. Only the deploy steps get the Cloudflare credentials. The Pages project is `name` in wrangler.toml.
 name: Deploy
 
 on:
@@ -29,17 +29,14 @@ jobs:
   deploy:
     if: vars.CLOUDFLARE_ACCOUNT_ID != ''
     runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - run: npm install -g pnpm@12
+      - run: npm install -g pnpm@12.16.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
@@ -49,9 +46,15 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
       - name: Deploy staging
         run: bash scripts/deploy.sh staging
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       - name: Migrate production
         run: pnpm db:migrate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
       - name: Deploy production
         run: bash scripts/deploy.sh main
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

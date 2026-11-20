@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { hex, sha256 } from "../lib/secure.ts";
 import { JPEG, PNG, TOKEN, setup } from "./helpers.ts";
 
 let t: Awaited<ReturnType<typeof setup>>;
@@ -30,6 +31,13 @@ describe("submit", () => {
     expect((await t.submit({ text: "x" }, { "x-project-key": "nope" })).status).toBe(401);
   });
 
+  it("sends nosniff and a deny-all CSP with every JSON answer, refusals and admin data alike", async () => {
+    for (const res of [await t.submit({ text: "x" }, { "x-project-key": "nope" }), await t.admin("/api/feedback"), await t.call("/api/limits")]) {
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'");
+    }
+  });
+
   it("rejects bad text, kind and oversize text", async () => {
     expect((await t.submit({ text: "x".repeat(4001) })).status).toBe(413);
     expect((await t.submit({ text: "  " })).status).toBe(400);
@@ -50,6 +58,13 @@ describe("submit", () => {
     for (let i = 0; i < 20; i++) expect((await t.submit({ text: "x" }, { "x-device-id": "d1" })).status).toBe(201);
     expect((await t.submit({ text: "x" }, { "x-device-id": "d1" })).status).toBe(429);
     expect((await t.submit({ text: "x" }, { "x-device-id": "d2" })).status).toBe(201);
+  });
+
+  it("rate limits per ip whatever device id is sent", async () => {
+    const ip = hex(await sha256("1.1.1.1"));
+    await t.db.query(`insert into submit_log (project_id, reporter_hash, ip_hash) select 1, 'h' || g, '${ip}' from generate_series(1, 100) g`);
+    expect((await t.submit({ text: "x" }, { "x-device-id": "fresh-device" })).status).toBe(429);
+    expect((await t.submit({ text: "x" }, { "cf-connecting-ip": "2.2.2.2" })).status).toBe(201); // another address still sends
   });
 
   it("rate limits per project", async () => {

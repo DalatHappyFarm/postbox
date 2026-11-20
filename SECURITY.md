@@ -24,3 +24,4 @@ We aim to acknowledge a report within 7 days.
 - Testers have no accounts: they send with a per-project public key, which is not a secret and only allows submitting.
 - Reading and changing feedback needs the single admin bearer token.
 - Images are checked by magic bytes and JPEG metadata (EXIF, GPS) is stripped on the server.
+- Everything a tester sends is data: stored text loses control characters (one-line fields lose line breaks too), and agent briefs put the tester's note in a code fence, so a letter cannot forge the owner's instructions or send escape codes to a terminal.

@@ -673,11 +673,18 @@ function paintLetter(fresh = false) {
   const text = el("div", "l-text-wrap");
   text.append(...textBlock(i));
   const dl = contextList(i);
-  if (i.element) {
-    const dd = el("dd", "elem");
-    dd.append(Object.assign(el("code", "", i.element.selector), { title: i.element.html || "" }));
-    if (i.element.text) dd.append(el("span", "muted", ` "${i.element.text}"`));
-    dl.append(el("dt", "", "Pointed at"), dd);
+  if (i.marks?.length) {
+    // Numbered like the red frames the widget drew on the screenshot.
+    const ol = el("ol", "marks");
+    for (const m of i.marks) {
+      const li = el("li");
+      if (m.type === "area") li.append(el("span", "muted", "Area in "));
+      li.append(Object.assign(el("code", "", m.selector), { title: m.html || "" }));
+      if (m.text) li.append(el("span", "muted", ` "${m.text}"`));
+      ol.append(li);
+    }
+    const dd = el("dd"); dd.append(ol);
+    dl.append(el("dt", "", "Marked"), dd);
   }
   text.append(dl);
   if (i.logs?.length) {

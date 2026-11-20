@@ -59,7 +59,7 @@ describe("resize", () => {
     getSize: vi.fn(async () => ({ width: 3000, height: 4000 })),
     manipulate: vi.fn(async () => ({ uri: "file:///out.jpg", width: 1200, height: 1600 })),
     bytes: () => bytes,
-    remove: vi.fn(),
+    remove: vi.fn<ImageDeps["remove"]>(),
   });
   it("processImage resizes at quality 0.7, deletes the source", async () => {
     const d = deps(1000);

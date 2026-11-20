@@ -5,7 +5,7 @@ import { setup } from "./helpers.ts";
 describe("readLimits", () => {
   it("uses the spec defaults when nothing is set", () => {
     expect(readLimits({})).toEqual(DEFAULTS);
-    expect(DEFAULTS).toEqual({ MAX_ATTACHMENTS: 4, MAX_IMAGE_BYTES: 5242880, MAX_TOTAL_BYTES: 15728640, MAX_THUMB_BYTES: 65536, MAX_TEXT: 4000, RATE_PER_DEVICE_HOUR: 20, RATE_PER_PROJECT_HOUR: 200 });
+    expect(DEFAULTS).toEqual({ MAX_ATTACHMENTS: 4, MAX_IMAGE_BYTES: 5242880, MAX_TOTAL_BYTES: 15728640, MAX_THUMB_BYTES: 65536, MAX_TEXT: 4000, RATE_PER_DEVICE_HOUR: 20, RATE_PER_IP_HOUR: 100, RATE_PER_PROJECT_HOUR: 200 });
   });
   it("reads numbers and digit strings", () => {
     expect(readLimits({ MAX_ATTACHMENTS: "6", MAX_TEXT: 500, RATE_PER_DEVICE_HOUR: " 7 " })).toMatchObject({ MAX_ATTACHMENTS: 6, MAX_TEXT: 500, RATE_PER_DEVICE_HOUR: 7 });
