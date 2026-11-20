@@ -1,16 +1,21 @@
-// What the web widget sends about the page besides the note: recent errors and failed requests (`logs`) and the
-// parts of the page the tester marked (`marks`). Both are optional extras, so a bad value is dropped, never a reason to
-// refuse the letter; every string is cut to a fixed length.
+// What the web widget sends about the page besides the note: recent errors and failed requests (`logs`), the
+// parts of the page the tester marked (`marks`) and their last steps on the page (`trail`). All are optional extras, so a
+// bad value is dropped, never a reason to refuse the letter; every string is cut to a fixed length.
 
 export const LOG_KINDS = ["error", "rejection", "console", "resource", "request"] as const;
 export type Log = {
   kind: (typeof LOG_KINDS)[number]; message: string; source?: string; method?: string; url?: string; status?: number; seconds_before: number;
 };
 /** A part of the page the tester marked: an element they clicked, or an area they dragged (its selector is the smallest element around it). */
-export type Mark = { type: "element" | "area"; selector: string; html?: string; text?: string; rect?: { x: number; y: number; w: number; h: number } };
+export type Mark = { type: "element" | "area"; selector: string; html?: string; text?: string; style?: string; rect?: { x: number; y: number; w: number; h: number } };
+
+/** One step of the tester before sending: a page opened or left, an element clicked, a field changed (never its value). */
+export const STEP_KINDS = ["load", "navigate", "click", "change"] as const;
+export type Step = { kind: (typeof STEP_KINDS)[number]; name?: string; text?: string; url?: string; seconds_before: number };
 
 const MAX_LOGS = 20;
 export const MAX_MARKS = 9;
+const MAX_TRAIL = 10;
 
 // Postgres refuses NUL and half of a surrogate pair (a cut through an emoji) in json and text, so a letter holding one was
 // lost with a 500; a line break in a one-line value could start a forged heading in a brief.
@@ -52,7 +57,7 @@ export function cleanLogs(v: unknown): Log[] | null {
 const coord = (v: unknown, min: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(100_000, Math.max(min, Math.round(v))) : null);
 
 /**
- * Valid marks only, in order, at most 9 (null when none); a selector is required, the tag, text and box are optional.
+ * Valid marks only, in order, at most 9 (null when none); a selector is required, the tag, text, style and box are optional.
  * `legacy` is the single `element` that widgets from before marks send (still cached in open tabs).
  */
 export function cleanMarks(v: unknown, legacy?: unknown): Mark[] | null {
@@ -63,13 +68,32 @@ export function cleanMarks(v: unknown, legacy?: unknown): Mark[] | null {
     const selector = cut(x.selector, 500);
     if (!selector) continue;
     const m: Mark = { type: x.type === "area" ? "area" : "element", selector };
-    const html = cut(x.html, 500), t = cut(x.text, 200);
+    const html = cut(x.html, 500), t = cut(x.text, 200), style = cut(x.style, 500);
     if (html) m.html = html;
     if (t) m.text = t;
+    if (style) m.style = style;
     const r = isObj(x.rect) ? x.rect : {};
     const rect = { x: coord(r.x, -100_000), y: coord(r.y, -100_000), w: coord(r.w, 0), h: coord(r.h, 0) };
     if (Object.values(rect).every((n) => n !== null)) m.rect = rect as Mark["rect"];
     out.push(m);
+  }
+  return out.length ? out : null;
+}
+
+/** Valid steps only, oldest first, newest 10; a page step needs a url, a click or change a name; null when nothing valid is left. */
+export function cleanTrail(v: unknown): Step[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: Step[] = [];
+  for (const x of v.slice(-MAX_TRAIL)) {
+    if (!isObj(x) || !STEP_KINDS.includes(x.kind as Step["kind"])) continue;
+    const kind = x.kind as Step["kind"], seconds = Number(x.seconds_before);
+    const name = cut(x.name, 120), text = cut(x.text, 80), url = cut(x.url, 500);
+    if (!Number.isFinite(seconds) || seconds < 0 || !(kind === "load" || kind === "navigate" ? url : name)) continue;
+    const s: Step = { kind, seconds_before: Math.min(86_400, Math.round(seconds)) };
+    if (name) s.name = name;
+    if (text) s.text = text;
+    if (url) s.url = url;
+    out.push(s);
   }
   return out.length ? out : null;
 }

@@ -113,7 +113,7 @@ export function cleanUrl(href) {
   let hash = "";
   const m = HASH_ROUTE.exec(u.hash);
   if (m) {
-    const r = new URL(u.hash.slice(m[0].length - 1), "http://x");
+    const r = new URL("http://x" + u.hash.slice(m[0].length - 1)); // "//" after the host would be read as a host, and throw
     scrub(r.searchParams);
     hash = m[0].slice(0, -1) + r.pathname + r.search;
   }
@@ -190,9 +190,10 @@ export function buildMeta(f, maxText = DEFAULT_LIMITS.max_text) {
   return meta;
 }
 
-// ---- the page around the note: recent errors and failed requests, and the element the tester pointed at ----
+// ---- the page around the note: recent errors and failed requests, the last steps, and the parts the tester marked ----
 
 export const LOG_MAX = 20;
+export const TRAIL_MAX = 10;
 const LOG_TEXT = 300;
 
 /** One readable line for anything thrown, rejected or logged. */
@@ -251,9 +252,17 @@ export function shortName(tag, id, classes = []) {
   return [tag.toLowerCase(), ...classes.filter((c) => /^[A-Za-z_-][\w-]*$/.test(c)).slice(0, 2)].join(".").slice(0, 60);
 }
 
+/** Name of a form field for the steps: its short name when the id is hand-written, else `input[name="email"]`, else its short name. */
+export function fieldName(tag, id, classes = [], nameAttr = "") {
+  if (id && PLAIN_ID.test(id)) return shortName(tag, id, classes);
+  const name = String(nameAttr ?? "").replace(/["\\]/g, "").slice(0, 60);
+  return name ? `${tag.toLowerCase()}[name="${name}"]` : shortName(tag, id, classes);
+}
+
 // ---- marks: the parts of the page the tester marked, numbered like their frames on the screenshot ----
 
 export const MAX_MARKS = 9;
+export const MAX_HIDES = 20; // boxes the tester can cover in the screenshot; they are not marks and stay in the browser
 export const BADGE = 22; // px, the numbered circle at the top-left corner of a mark's frame
 
 /** The box between where a drag started and where the pointer is, in whole viewport px. */
@@ -284,6 +293,41 @@ export function placeBadges(frames, width, height, size = BADGE) {
 /** Whether the element box `r` (a DOMRect) holds the dragged box `b`, with 1 px of slack for sub-pixel layout. */
 export const holds = (r, b) => r.left <= b.x + 1 && r.top <= b.y + 1 && r.right >= b.x + b.w - 1 && r.bottom >= b.y + b.h - 1;
 
+/** Whether two boxes `{x, y, w, h}` share any area (touching edges do not count). */
+export const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+export const TRANSPARENT = /^transparent$|rgba\(.*,\s*0\)$|\/\s*0\)$/;
+/** Shortest CSS shorthand of four values given top, right, bottom, left (or the corners from top-left clockwise). */
+const box4 = ([a, b, c, d]) => (a === c && b === d ? (a === b ? a : `${a} ${b}`) : b === d ? `${a} ${b} ${c}` : `${a} ${b} ${c} ${d}`);
+const SIDES = ["top", "right", "bottom", "left"];
+
+/**
+ * The look of an element in one line for the agent, at most 500 characters: font, color, background, padding, margin,
+ * border, radius, display and opacity, leaving out what is zero, transparent or not drawn. `get(prop)` reads a computed value.
+ * @param {(prop: string) => string} get
+ */
+export function styleSummary(get) {
+  const family = get("font-family").split(",")[0].trim().replace(/^["']|["']$/g, "");
+  const parts = [`font: ${get("font-weight")} ${get("font-size")}/${get("line-height")} ${family}`, `color: ${get("color")}`];
+  const bg = get("background-color");
+  if (!TRANSPARENT.test(bg)) parts.push(`background: ${bg}`);
+  for (const k of ["padding", "margin"]) {
+    const v = SIDES.map((s) => get(`${k}-${s}`));
+    if (!v.every((x) => x === "0px")) parts.push(`${k}: ${box4(v)}`);
+  }
+  const edges = SIDES.map((s) => [get(`border-${s}-width`), get(`border-${s}-style`), get(`border-${s}-color`)]);
+  const lines = edges.map((e) => e.join(" "));
+  const drawn = edges.map(([w, st]) => w !== "0px" && st !== "none");
+  if (lines.every((l) => l === lines[0])) { if (drawn[0]) parts.push(`border: ${lines[0]}`); }
+  else SIDES.forEach((s, i) => { if (drawn[i]) parts.push(`border-${s}: ${lines[i]}`); });
+  const radius = ["top-left", "top-right", "bottom-right", "bottom-left"].map((c) => get(`border-${c}-radius`));
+  if (!radius.every((x) => x === "0px")) parts.push(`border-radius: ${box4(radius)}`);
+  parts.push(`display: ${get("display")}`);
+  const opacity = get("opacity");
+  if (parseFloat(opacity) < 1) parts.push(`opacity: ${opacity}`);
+  return parts.join("; ").slice(0, 500);
+}
+
 /** Which message to show for a failed send: status 0 is a network failure or timeout. */
 export function errorKey(status, error) {
   if (status === 0) return "offline";
@@ -300,7 +344,7 @@ export function errorKey(status, error) {
 export const STRINGS = {
   en: {
     button: "Send feedback", move: "drag to move", title: "Send feedback", close: "Close",
-    consent: "Your note, a screenshot of this page, any images you add and the page's recent errors go to the team that builds this site. Images are deleted after 90 days.",
+    consent: "Your note, a screenshot of this page, any images you add, the page's recent errors and your last clicks on it (never what you type) go to the team that builds this site. Images are deleted after 90 days.",
     consentOk: "OK, continue",
     kinds: { bug: "Bug", idea: "Idea", other: "Other" }, kindLabel: "Kind",
     placeholder: "What happened, or what would help?", textLabel: "Your note",
@@ -308,9 +352,11 @@ export const STRINGS = {
     shotFailed: "Could not capture this page. Paste or add a screenshot instead.",
     addImage: "Add image", paste: "or paste", remove: "Remove image", screenshot: "Screenshot of this page", image: "Image",
     drop: "Drop images to add them", full: "No more images can be added.",
-    context: "Sent along", logs: "recent errors\u00a0({n})",
+    context: "Sent along", logs: "recent errors\u00a0({n})", steps: "your last steps\u00a0({n})",
     mark: "Mark the problem", markMore: "Mark more", markHelp: "Click a part or drag a box", markHelpTouch: "Tap a part or drag a box",
     markFull: "Up to {n} marks", undo: "Undo", markDone: "Done", area: "Area in", removeMark: "Remove mark {n}",
+    markMode: "Mark", hideMode: "Hide", hideHelp: "Click or drag over what to hide", hideHelpTouch: "Tap or drag over what to hide",
+    hideFull: "Up to {n} hidden areas", unhide: "Show again", hidden: "Hidden from the screenshot ({n})",
     send: "Send", sending: "Sending…", sent: "Sent. Thank you!", sentRef: "Letter #{id}",
     errors: {
       empty: "Write a few words first.", offline: "Could not reach the server. Check the connection and try again.",
@@ -321,7 +367,7 @@ export const STRINGS = {
   },
   vi: {
     button: "Gửi góp ý", move: "kéo để di chuyển", title: "Gửi góp ý", close: "Đóng",
-    consent: "Ghi chú, ảnh chụp trang này, ảnh bạn thêm và các lỗi gần đây của trang sẽ được gửi cho đội làm website. Ảnh được xoá sau 90 ngày.",
+    consent: "Ghi chú, ảnh chụp trang này, ảnh bạn thêm, các lỗi gần đây của trang và các thao tác gần nhất của bạn trên trang (không gồm nội dung bạn gõ) sẽ được gửi cho đội làm website. Ảnh được xoá sau 90 ngày.",
     consentOk: "Đồng ý, tiếp tục",
     kinds: { bug: "Lỗi", idea: "Ý tưởng", other: "Khác" }, kindLabel: "Loại",
     placeholder: "Có gì chưa ổn, hoặc điều gì sẽ giúp bạn?", textLabel: "Ghi chú của bạn",
@@ -329,9 +375,11 @@ export const STRINGS = {
     shotFailed: "Không chụp được trang này. Hãy dán hoặc thêm ảnh chụp.",
     addImage: "Thêm ảnh", paste: "hoặc dán", remove: "Xoá ảnh", screenshot: "Ảnh chụp trang này", image: "Ảnh",
     drop: "Thả ảnh vào đây để thêm", full: "Đã đủ số ảnh tối đa.",
-    context: "Gửi kèm", logs: "lỗi gần đây\u00a0({n})",
+    context: "Gửi kèm", logs: "lỗi gần đây\u00a0({n})", steps: "thao tác gần đây\u00a0({n})",
     mark: "Đánh dấu chỗ có vấn đề", markMore: "Đánh dấu thêm", markHelp: "Bấm chọn một phần hoặc kéo để khoanh vùng", markHelpTouch: "Chạm chọn một phần hoặc kéo để khoanh vùng",
     markFull: "Tối đa {n} dấu", undo: "Hoàn tác", markDone: "Xong", area: "Vùng trong", removeMark: "Bỏ dấu {n}",
+    markMode: "Đánh dấu", hideMode: "Che", hideHelp: "Bấm hoặc kéo qua chỗ cần che", hideHelpTouch: "Chạm hoặc kéo qua chỗ cần che",
+    hideFull: "Che tối đa {n} vùng", unhide: "Bỏ che", hidden: "Đã che khỏi ảnh ({n})",
     send: "Gửi", sending: "Đang gửi…", sent: "Đã gửi. Cảm ơn bạn!", sentRef: "Mã thư #{id}",
     errors: {
       empty: "Hãy viết vài chữ trước đã.", offline: "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { webhookSecret } from "../lib/telegram.ts";
+import { letterText, webhookSecret } from "../lib/telegram.ts";
 import { TOKEN, setup } from "./helpers.ts";
 
 const CHAT = 42;
@@ -101,6 +101,33 @@ describe("Telegram webhook", () => {
     expect(calls("answerCallbackQuery")[1].text).toBe("Open it in Postbox to mark it a duplicate again.");
     expect(await status(1)).toEqual({ status: "new", note: null });
     expect((await hook({ nonsense: true })).status).toBe(200);
+  });
+});
+
+describe("marks in the letter message", () => {
+  it("adds the count to the where line from 1 up: 1 mark, 3 marks, nothing for none", () => {
+    const l = { id: 5, project_name: "Scar", kind: "bug", text: "x", screen: "/cart", platform: "web", marks: 0 };
+    const where = (marks: number) => letterText({ ...l, marks }, "", "https://pb.test", true).split("\n")[1];
+    expect([where(0), where(1), where(3)]).toEqual(["Bug · /cart · web", "Bug · /cart · web · 1 mark", "Bug · /cart · web · 3 marks"]);
+    expect(letterText({ ...l, kind: "idea", screen: null, platform: null, marks: 2 }, "", "https://pb.test", false).split("\n")[1]).toBe("Idea · 2 marks");
+  });
+
+  it("a new letter says how many parts the tester marked", async () => {
+    await t.db.query("update projects set notified_at = null");
+    await t.submit({ text: "pay button", kind: "bug", platform: "web", marks: [{ type: "element", selector: "#pay" }, { type: "area", selector: "main" }, { selector: " " }] });
+    await t.settle();
+    expect(t.sent[0].body.text.split("\n").slice(0, 2)).toEqual(["📬 Demo: new letter #4", "Bug · web · 2 marks"]); // the blank selector is no mark
+  });
+
+  it("/next counts the marks of the letter it shows, the single element of an older widget as one", async () => {
+    await t.db.query(`update feedback set marks = '[{"type":"element","selector":"#a"},{"type":"area","selector":"main"},{"type":"element","selector":"#b"}]'::jsonb where id = 1`);
+    await t.db.query(`update feedback set element = '{"selector": "#x"}'::jsonb where id = 2`);
+    const next = async () => { await hook(press("n")); return calls("sendMessage").at(-1).text.split("\n")[1]; };
+    expect(await next()).toBe("Idea · web · 3 marks");
+    await t.db.query("update feedback set status = 'ready' where id = 1");
+    expect(await next()).toBe("Idea · web · 1 mark");
+    await t.db.query("update feedback set status = 'ready' where id = 2");
+    expect(await next()).toBe("Idea · web");
   });
 });
 

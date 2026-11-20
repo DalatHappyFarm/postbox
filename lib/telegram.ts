@@ -29,12 +29,12 @@ export async function tg(env: TgEnv, method: string, body: object, fetchFn: type
 /** The secret Telegram sends back on every webhook call: derived from ADMIN_TOKEN, so there is nothing extra to keep. */
 export const webhookSecret = async (adminToken: string) => hex(await sha256(`postbox telegram webhook|${adminToken}`));
 
-export type LetterView = { id: number; project_name: string; kind: string; text: string; screen: string | null; platform: string | null };
+export type LetterView = { id: number; project_name: string; kind: string; text: string; screen: string | null; platform: string | null; marks: number };
 
 /** The text of a letter message. `fresh` is a notification ("new letter"), else a letter shown with /next. */
 export function letterText(l: LetterView, footer: string, dashboard: string, fresh: boolean): string {
   const text = l.text.length > TEXT_MAX ? `${l.text.slice(0, TEXT_MAX - 1)}…` : l.text;
-  const where = [KIND[l.kind] ?? l.kind, l.screen, l.platform].filter(Boolean).join(" · ");
+  const where = [KIND[l.kind] ?? l.kind, l.screen, l.platform, l.marks > 0 ? `${l.marks} mark${l.marks === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ");
   return [
     `📬 ${l.project_name}: ${fresh ? "new letter" : "letter"} #${l.id}`, where, "", text, "", footer,
     "Reply to this message with what the agent should do: the letter goes to Ready with your words as the decision.",
@@ -77,6 +77,7 @@ async function setStatus(sql: Sql, id: number, status: string, note?: string): P
 
 async function sendNext(env: TgEnv, sql: Sql, dashboard: string, fetchFn: typeof fetch) {
   const rows = await sql`select f.id::int as id, p.name as project_name, f.kind, f.text, f.screen, f.platform,
+      coalesce(jsonb_array_length(f.marks), case when f.element is not null then 1 else 0 end)::int as marks,
       (select count(*)::int from feedback where status = 'new') as unread
     from feedback f join projects p on p.id = f.project_id where f.status = 'new' order by f.id limit 1`;
   if (!rows.length) return tg(env, "sendMessage", { chat_id: env.TELEGRAM_CHAT_ID, text: "All caught up: no unread letters." }, fetchFn);

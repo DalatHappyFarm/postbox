@@ -86,11 +86,12 @@ export type Item = {
   screen: string | null; build: string | null; app_version: string | null; platform: string | null;
   device: string | null; os: string | null; locale?: string | null; url: string | null; created_at: string;
   attachment_count?: number; attachments?: Attachment[]; duplicates?: { id: number; text: string }[];
-  /** Web widget: the page's recent errors and failed requests, and the parts of the page the tester marked (detail only). */
-  logs?: Log[] | null; marks?: Mark[] | null;
+  /** Web widget: the page's recent errors and failed requests, the parts of the page the tester marked and their last steps before sending (detail only). */
+  logs?: Log[] | null; marks?: Mark[] | null; trail?: Step[] | null;
 };
 export type Log = { kind: string; message: string; source?: string; method?: string; url?: string; status?: number; seconds_before: number };
-export type Mark = { type: "element" | "area"; selector: string; html?: string; text?: string; rect?: { x: number; y: number; w: number; h: number } };
+export type Step = { kind: "load" | "navigate" | "click" | "change"; name?: string; text?: string; url?: string; seconds_before: number };
+export type Mark = { type: "element" | "area"; selector: string; html?: string; text?: string; style?: string; rect?: { x: number; y: number; w: number; h: number } };
 
 /** A tester's value on one line: a line break in it could start a heading that the agent takes for the owner's. */
 export const line = (v: unknown) => String(v).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
@@ -104,11 +105,19 @@ export function fenced(text: string): string[] {
   return [f, s, f];
 }
 
-/** One line per part of the page the tester marked, numbered like its frame on the screenshot: "2. area 360x48 at 0,600, inside `div.cart`". */
+/** One line per part of the page the tester marked, numbered like its frame on the screenshot: "2. area 360x48 at 0,600, inside `div.cart`", and a marked element's computed style on an indented `style:` line. */
 export function markLine(m: Mark, n: number): string {
   const box = m.rect ? `${m.rect.w}x${m.rect.h} at ${m.rect.x},${m.rect.y}` : "";
   const what = [code(line(m.selector)), m.html ? code(line(m.html)) : "", m.text ? `"${line(m.text)}"` : ""].filter(Boolean).join(" ");
-  return m.type === "area" ? `${n + 1}. area${box ? ` ${box}` : ""}, inside ${what}` : `${n + 1}. ${what}${box ? ` (${box})` : ""}`;
+  const head = m.type === "area" ? `${n + 1}. area${box ? ` ${box}` : ""}, inside ${what}` : `${n + 1}. ${what}${box ? ` (${box})` : ""}`;
+  return m.style ? `${head}\n   style: ${code(line(m.style))}` : head;
+}
+
+const STEP_VERB = { load: "opened", navigate: "went to", click: "clicked", change: "changed" };
+/** One line per step: "12 s before sending: clicked `button.pay` "Pay"". Same as the dashboard's copied brief. */
+export function stepLine(s: Step): string {
+  const what = s.kind === "load" || s.kind === "navigate" ? s.url : [code(s.name ?? ""), s.kind === "click" && s.text ? `"${s.text}"` : ""].filter(Boolean).join(" ");
+  return line(`${s.seconds_before} s before sending: ${STEP_VERB[s.kind] ?? s.kind} ${what}`);
 }
 
 /** One line per entry: "3 s before sending, request: GET https://shop.test/api/cart: 500 Internal Server Error". */
@@ -140,6 +149,7 @@ function one(i: Omit<Item, "duplicates">, ph: Photos, heading: string): string[]
     ...images,
     "", "## Text", "", ...fenced(i.text),
     ...(i.marks?.length ? ["", `## Marked on the page (${i.marks.length})`, "", "Numbered like the red frames on the screenshot; boxes are in viewport pixels.", "", ...i.marks.map(markLine)] : []),
+    ...(i.trail?.length ? ["", `## Steps before sending (${i.trail.length})`, "", ...i.trail.map((s) => `- ${stepLine(s)}`)] : []),
     ...(i.note ? ["", "## Decision for the agent", "", term(i.note)] : []),
     ...(i.agent_note ? ["", "## Agent's note", "", term(i.agent_note)] : []),
     ...(i.logs?.length ? ["", `## Page errors and failed requests (${i.logs.length})`, "", ...i.logs.map((e) => `- ${logLine(e)}`)] : []),

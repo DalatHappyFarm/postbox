@@ -7,7 +7,7 @@ import { configured, sendLetter, type TgEnv } from "./telegram.ts";
 
 export const QUIET_MINUTES = 10;
 
-export type NewLetter = { id: number; kind: string; text: string; screen: string | null; platform: string | null };
+export type NewLetter = { id: number; kind: string; text: string; screen: string | null; platform: string | null; marks: number };
 
 export const unreadLine = (unread: number) => (unread > 1 ? `${unread} unread letters in this mailbox` : "1 unread letter in this mailbox");
 

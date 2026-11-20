@@ -1,5 +1,5 @@
 import { describe as group, expect, it } from "vitest";
-import { boxBetween, buildMeta, cleanUrl, cssPath, frameOf, holds, MAX_MARKS, placeBadges, DEFAULT_LIMITS, describe, errorKey, errText, logsForSend, openingTag, pushLog, shortName, FAB_REST, initialFab, isDrag, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, snapFab, STRINGS, testerFlag } from "../public/widget/lib.js";
+import { boxBetween, buildMeta, cleanUrl, cssPath, fieldName, frameOf, holds, MAX_MARKS, placeBadges, DEFAULT_LIMITS, describe, errorKey, errText, logsForSend, openingTag, pushLog, shortName, TRAIL_MAX, FAB_REST, initialFab, isDrag, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, snapFab, STRINGS, testerFlag, MAX_HIDES, overlaps, styleSummary } from "../public/widget/lib.js";
 
 const LANGS = Object.keys(STRINGS) as (keyof typeof STRINGS)[];
 
@@ -68,6 +68,7 @@ group("web widget helpers", () => {
     expect(cleanUrl("https://app.vn/#/orders/12?access_token=x&tab=items")).toBe("https://app.vn/#/orders/12?access_token=redacted&tab=items");
     expect(cleanUrl("https://app.vn/#!/home")).toBe("https://app.vn/#!/home");
     expect(cleanUrl("https://app.vn/cb#access_token=secret&state=1")).toBe("https://app.vn/cb");
+    expect(cleanUrl("https://app.vn/#//")).toBe("https://app.vn/#//"); // a route starting with // once threw, inside the page's own history calls
     expect(cleanUrl("not a url")).toBeNull();
     expect(cleanUrl("https://a.vn/" + "x".repeat(3000))!.length).toBe(2000);
   });
@@ -122,7 +123,7 @@ group("web widget helpers", () => {
     for (const lang of LANGS) {
       expect(keys(STRINGS[lang]).sort(), lang).toEqual(keys(STRINGS.en).sort());
       for (const k of keys(STRINGS[lang])) expect(k.split(".").reduce((o: any, x) => o[x], STRINGS[lang]), `${lang}.${k}`).toMatch(/\S/);
-      for (const k of ["logs", "markFull", "removeMark"] as const) expect(STRINGS[lang][k], `${lang}.${k}`).toContain("{n}");
+      for (const k of ["logs", "steps", "markFull", "removeMark", "hideFull", "hidden"] as const) expect(STRINGS[lang][k], `${lang}.${k}`).toContain("{n}");
     }
     expect([pickLang("vi", "en"), pickLang(undefined, "vi-VN"), pickLang("", "", ["vi", "en"]), pickLang(undefined, "en", ["vi"]), pickLang(undefined, undefined, [])]).toEqual(["vi", "vi", "vi", "en", "en"]);
     // A language it does not speak passes to the next one; region tags and underscores match their language.
@@ -146,6 +147,61 @@ group("web widget helpers", () => {
     const r = { left: 10, top: 10, right: 210, bottom: 110 };
     expect([holds(r, { x: 10, y: 10, w: 200, h: 100 }), holds(r, { x: 9.5, y: 50, w: 20, h: 20 }), holds(r, { x: 50, y: 50, w: 200, h: 10 })]).toEqual([true, true, false]);
     expect(MAX_MARKS).toBe(9);
+  });
+
+  it("covers boxes the tester hides: a limit apart from the marks, and where a box meets a frame", () => {
+    expect(MAX_HIDES).toBe(20);
+    const box = { x: 10, y: 10, w: 100, h: 50 };
+    expect([overlaps(box, { x: 100, y: 50, w: 40, h: 40 }), overlaps({ x: 100, y: 50, w: 40, h: 40 }, box), overlaps(box, { x: 20, y: 20, w: 5, h: 5 }), overlaps({ x: 0, y: 0, w: 500, h: 500 }, box)]).toEqual([true, true, true, true]);
+    // Touching edges and corners share no area.
+    expect([overlaps(box, { x: 110, y: 10, w: 20, h: 50 }), overlaps(box, { x: 10, y: 60, w: 100, h: 20 }), overlaps(box, { x: 110, y: 60, w: 5, h: 5 }), overlaps(box, { x: 200, y: 200, w: 5, h: 5 })]).toEqual([false, false, false, false]);
+  });
+
+  it("sums up an element's computed style in one line: font, color, then only what is drawn", () => {
+    const four = (k: string, v: string[], tail = "") => Object.fromEntries(["top", "right", "bottom", "left"].map((s, i) => [`${k}-${s}${tail}`, v[i]]));
+    const zero = ["0px", "0px", "0px", "0px"];
+    const none = ["none", "none", "none", "none"];
+    const base = { "font-weight": "600", "font-size": "16px", "line-height": "24px", "font-family": '"Inter", system-ui, sans-serif', color: "rgb(255, 255, 255)", "background-color": "rgba(0, 0, 0, 0)",
+      display: "block", opacity: "1", ...four("padding", zero), ...four("margin", zero), ...four("border", zero, "-width"), ...four("border", none, "-style"), ...four("border", ["rgb(0, 0, 0)", "rgb(0, 0, 0)", "rgb(0, 0, 0)", "rgb(0, 0, 0)"], "-color"),
+      "border-top-left-radius": "0px", "border-top-right-radius": "0px", "border-bottom-right-radius": "0px", "border-bottom-left-radius": "0px" } as Record<string, string>;
+    const sum = (over: Record<string, string> = {}) => styleSummary((p) => ({ ...base, ...over })[p] ?? "");
+    const sides = (k: string, v: string[]) => sum(four(k, v));
+
+    expect(sum()).toBe("font: 600 16px/24px Inter; color: rgb(255, 255, 255); display: block"); // nothing zero, transparent or undrawn
+    const radius = (v: string[]) => Object.fromEntries(["top-left", "top-right", "bottom-right", "bottom-left"].map((c, i) => [`border-${c}-radius`, v[i]]));
+    expect(sum({ "background-color": "rgb(196, 98, 22)", ...four("padding", ["10px", "10px", "10px", "10px"]), ...radius(["8px", "8px", "8px", "8px"]) }))
+      .toBe("font: 600 16px/24px Inter; color: rgb(255, 255, 255); background: rgb(196, 98, 22); padding: 10px; border-radius: 8px; display: block");
+    expect(sum({ "background-color": "rgb(1, 2, 3)", ...four("padding", ["8px", "16px", "8px", "16px"]), ...four("margin", ["1px", "2px", "3px", "4px"]), ...four("border", ["1px", "1px", "1px", "1px"], "-width"), ...four("border", ["solid", "solid", "solid", "solid"], "-style"),
+      ...radius(["4px", "8px", "4px", "8px"]), display: "flex", opacity: "0.5" }))
+      .toBe("font: 600 16px/24px Inter; color: rgb(255, 255, 255); background: rgb(1, 2, 3); padding: 8px 16px; margin: 1px 2px 3px 4px; border: 1px solid rgb(0, 0, 0); border-radius: 4px 8px; display: flex; opacity: 0.5");
+
+    // A background counts unless it is fully transparent in any syntax.
+    for (const c of ["transparent", "rgba(0, 0, 0, 0)", "rgb(0 0 0 / 0)", "color(srgb 1 1 1 / 0)"]) expect(sum({ "background-color": c }), c).not.toContain("background");
+    for (const c of ["rgba(0, 0, 0, 0.5)", "rgb(0 0 0 / 0.5)", "rgb(0, 0, 0)"]) expect(sum({ "background-color": c }), c).toContain(`background: ${c}`);
+
+    // 1, 2, 3 or 4 values, whichever says the same in the fewest.
+    expect([sides("padding", ["4px", "4px", "4px", "4px"]), sides("padding", ["4px", "8px", "4px", "8px"]), sides("padding", ["4px", "8px", "2px", "8px"]), sides("padding", ["4px", "8px", "2px", "6px"])].map((v) => /padding: ([^;]*)/.exec(v)![1]))
+      .toEqual(["4px", "4px 8px", "4px 8px 2px", "4px 8px 2px 6px"]);
+    expect([sides("margin", ["4px", "4px", "2px", "4px"]), sides("margin", ["4px", "8px", "4px", "6px"]), sides("margin", ["0px", "0px", "0px", "5px"])].map((v) => /margin: ([^;]*)/.exec(v)![1])).toEqual(["4px 4px 2px", "4px 8px 4px 6px", "0px 0px 0px 5px"]);
+    expect(sum(radius(["50%", "50%", "50%", "50%"]))).toContain("border-radius: 50%;");
+    expect(sum(radius(["0px", "4px", "0px", "4px"]))).toContain("border-radius: 0px 4px;");
+
+    // Borders: one line when the four sides agree, else each side that is drawn; none when nothing is.
+    const border = (width: string[], style: string[], color = ["red", "red", "red", "red"]) => ({ ...four("border", width, "-width"), ...four("border", style, "-style"), ...four("border", color, "-color") });
+    expect(sum(border(["2px", "2px", "2px", "2px"], ["dashed", "dashed", "dashed", "dashed"]))).toContain("; border: 2px dashed red; display");
+    expect(sum(border(["1px", "0px", "3px", "0px"], ["solid", "none", "double", "none"], ["red", "red", "blue", "red"]))).toContain("; border-top: 1px solid red; border-bottom: 3px double blue; display");
+    expect(sum(border(["1px", "1px", "1px", "1px"], ["solid", "solid", "solid", "solid"], ["red", "red", "red", "blue"]))).toContain("; border-top: 1px solid red; border-right: 1px solid red; border-bottom: 1px solid red; border-left: 1px solid blue; display");
+    expect(sum(border(["0px", "0px", "0px", "0px"], ["solid", "solid", "solid", "solid"]))).not.toContain("border");
+    expect(sum(border(["3px", "3px", "3px", "3px"], ["none", "none", "none", "none"]))).not.toContain("border");
+    expect(sum(border(["3px", "0px", "0px", "0px"], ["solid", "none", "none", "none"]))).toContain("; border-top: 3px solid red; display");
+
+    // Opacity only below 1; the first font family without its quotes; at most 500 characters.
+    expect([sum({ opacity: "1" }), sum({ opacity: "0.99" }), sum({ opacity: "0" })].map((v) => v.includes("opacity") ? v.slice(v.indexOf("opacity")) : "")).toEqual(["", "opacity: 0.99", "opacity: 0"]);
+    expect(sum({ "font-family": "'Helvetica Neue', Arial" })).toMatch(/^font: 600 16px\/24px Helvetica Neue;/);
+    expect(sum({ "font-family": "ui-monospace" })).toMatch(/^font: 600 16px\/24px ui-monospace;/);
+    const long = sum({ "font-family": "F".repeat(700) });
+    expect(long).toHaveLength(500);
+    expect(long.startsWith("font: 600 16px/24px FFFF")).toBe(true);
   });
 
   it("follows the server limits, slots and send timeout like the React Native kit", () => {
@@ -191,5 +247,20 @@ group("web widget helpers", () => {
     expect(shortName("BUTTON", "", ["btn", "primary", "big"])).toBe("button.btn.primary");
     expect(shortName("DIV", "cart", ["x"])).toBe("#cart");
     expect(shortName("DIV", ":r2:", ["hover:bg-red", "card"])).toBe("div.card");
+  });
+
+  it("names a form field by its hand-written id, else its name attribute, else its tag and classes; keeps the last 10 steps", () => {
+    expect(fieldName("INPUT", "email", ["x"], "user_email")).toBe("#email");
+    expect(fieldName("INPUT", ":r3:", ["field"], "user_email")).toBe('input[name="user_email"]');
+    expect(fieldName("SELECT", "", [], "size")).toBe('select[name="size"]');
+    expect(fieldName("TEXTAREA", "", [], 'a"b\\c')).toBe('textarea[name="abc"]'); // quotes and backslashes cannot break out of the name
+    expect(fieldName("INPUT", "", [], "n".repeat(80))).toBe(`input[name="${"n".repeat(60)}"]`);
+    expect(fieldName("INPUT", ":r3:", ["field", "wide", "big"], "")).toBe("input.field.wide");
+    expect(fieldName("INPUT", "", [])).toBe("input");
+    expect(fieldName("INPUT", "", [], '"\\')).toBe("input");
+    expect(TRAIL_MAX).toBe(10);
+    const trail: { at: number; n: number }[] = [];
+    for (let n = 0; n < 14; n++) pushLog(trail, { at: 1000 + n * 1000, n }, TRAIL_MAX);
+    expect(trail.map((e) => e.n)).toEqual(Array.from({ length: 10 }, (_, n) => n + 4));
   });
 });

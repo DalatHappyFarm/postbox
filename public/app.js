@@ -1,6 +1,6 @@
 import { cleanToken, STATUS_LABEL, STATUS_VIEWS, KINDS, KIND_LABEL, PLATFORMS, PRIORITIES, priorityLabel, SORTS, TOKEN_KEY, migrateToken, firstLine, shortcutAction,
   decodeHash, encodeHash, stateQuery, listQuery, viewStatus, viewCount, inView, DEFAULT_STATE, nextAfter, stepId, progress, undoStack, undoGroups, groupByScreen, knownLabels,
-  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, stuckDays, logWhat, splitTitle, summary, wideShot, contextRows, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
+  normalizeLabel, labelError, searchId, resizeDims, fitScale, clampView, zoomAt, relativeTime, stuckDays, logWhat, stepVerb, stepWhat, splitTitle, summary, wideShot, contextRows, brief, briefMany, appendItems, thumbPath, moreBadge, buildLabel, widgetSnippet } from "/lib.js";
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -679,7 +679,7 @@ function paintLetter(fresh = false) {
     for (const m of i.marks) {
       const li = el("li");
       if (m.type === "area") li.append(el("span", "muted", "Area in "));
-      li.append(Object.assign(el("code", "", m.selector), { title: m.html || "" }));
+      li.append(Object.assign(el("code", "", m.selector), { title: [m.html, m.style].filter(Boolean).join("\n") }));
       if (m.text) li.append(el("span", "muted", ` "${m.text}"`));
       ol.append(li);
     }
@@ -687,13 +687,8 @@ function paintLetter(fresh = false) {
     dl.append(el("dt", "", "Marked"), dd);
   }
   text.append(dl);
-  if (i.logs?.length) {
-    const d = el("details", "logs"); d.open = i.logs.length <= 5;
-    d.append(el("summary", "", `Page errors and failed requests (${i.logs.length})`));
-    const ul = el("ul");
-    for (const e of i.logs) { const li = el("li"); li.append(el("span", "lk", e.kind), el("span", "lm", logWhat(e)), el("span", "lt", `${e.seconds_before} s`)); li.title = `${e.seconds_before} s before sending`; ul.append(li); }
-    d.append(ul); text.append(d);
-  }
+  if (i.trail?.length) text.append(timedList("Steps before sending", "steps", i.trail.map((s) => [stepVerb(s), stepWhat(s), s.seconds_before]), true));
+  if (i.logs?.length) text.append(timedList("Page errors and failed requests", "", i.logs.map((e) => [e.kind, logWhat(e), e.seconds_before]), i.logs.length <= 5));
   if (i.duplicates?.length) {
     const d = el("div", "dups"); d.append(el("strong", "", `${i.duplicates.length} duplicate${i.duplicates.length === 1 ? "" : "s"} folded in`));
     const ul = el("ul"); for (const x of i.duplicates) { const li = el("li"); const a = el("button", "linklike", `#${x.id} ${x.text}`); a.type = "button"; a.addEventListener("click", () => openLetter(x.id)); li.append(a); ul.append(li); }
@@ -726,6 +721,16 @@ function agentNote(i) {
 function textBlock(i) {
   const { title, body } = splitTitle(i.text);
   return [...(title ? [el("h3", "l-title", title)] : []), ...(body ? [el("p", title ? "l-text" : "l-text strong", body)] : [])];
+}
+
+/** A titled list of lines, each [what kind, the line, seconds before sending]: the page's errors, the tester's last steps. */
+function timedList(title, cls, rows, open) {
+  const d = el("details", `logs ${cls}`.trim()); d.open = open;
+  d.append(el("summary", "", `${title} (${rows.length})`));
+  const ul = el("ul");
+  for (const [kind, what, secs] of rows) { const li = el("li"); li.append(el("span", "lk", kind), el("span", "lm", what), el("span", "lt", `${secs} s`)); li.title = `${secs} s before sending`; ul.append(li); }
+  d.append(ul);
+  return d;
 }
 
 /** Context rows (page, device, build, received), shared by the letter and the photo viewer. */
