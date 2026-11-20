@@ -251,6 +251,39 @@ export function shortName(tag, id, classes = []) {
   return [tag.toLowerCase(), ...classes.filter((c) => /^[A-Za-z_-][\w-]*$/.test(c)).slice(0, 2)].join(".").slice(0, 60);
 }
 
+// ---- marks: the parts of the page the tester marked, numbered like their frames on the screenshot ----
+
+export const MAX_MARKS = 9;
+export const BADGE = 22; // px, the numbered circle at the top-left corner of a mark's frame
+
+/** The box between where a drag started and where the pointer is, in whole viewport px. */
+export function boxBetween(x0, y0, x1, y1) {
+  return { x: Math.round(Math.min(x0, x1)), y: Math.round(Math.min(y0, y1)), w: Math.round(Math.abs(x1 - x0)), h: Math.round(Math.abs(y1 - y0)) };
+}
+
+/** The frame drawn for a mark: an element gets 4 px of room around it, an area is framed where it was dragged. */
+export const frameOf = (m) => (m.type === "area" ? m.rect : { x: m.rect.x - 4, y: m.rect.y - 4, w: m.rect.w + 8, h: m.rect.h + 8 });
+
+/**
+ * Top-left of each mark's number, centred on a corner of its frame and kept inside the viewport: the top-left corner,
+ * else the first corner that no earlier number covers, else further right along the top edge.
+ */
+export function placeBadges(frames, width, height, size = BADGE) {
+  const keep = (v, max) => Math.min(Math.max(v, 2), Math.max(2, max - size - 2));
+  const at = (x, y) => ({ x: keep(x - size / 2, width), y: keep(y - size / 2, height) });
+  const placed = [];
+  const free = (p) => placed.every((q) => Math.abs(p.x - q.x) >= size || Math.abs(p.y - q.y) >= size);
+  for (const f of frames) {
+    let p = [at(f.x, f.y), at(f.x + f.w, f.y), at(f.x, f.y + f.h), at(f.x + f.w, f.y + f.h)].find(free);
+    for (let i = 1; !p; i++) { const q = at(f.x + i * (size + 2), f.y); if (free(q) || i >= 40) p = q; }
+    placed.push(p);
+  }
+  return placed;
+}
+
+/** Whether the element box `r` (a DOMRect) holds the dragged box `b`, with 1 px of slack for sub-pixel layout. */
+export const holds = (r, b) => r.left <= b.x + 1 && r.top <= b.y + 1 && r.right >= b.x + b.w - 1 && r.bottom >= b.y + b.h - 1;
+
 /** Which message to show for a failed send: status 0 is a network failure or timeout. */
 export function errorKey(status, error) {
   if (status === 0) return "offline";
@@ -276,7 +309,8 @@ export const STRINGS = {
     addImage: "Add image", paste: "or paste", remove: "Remove image", screenshot: "Screenshot of this page", image: "Image",
     drop: "Drop images to add them", full: "No more images can be added.",
     context: "Sent along", logs: "recent errors\u00a0({n})",
-    point: "Point at the problem", pointHelp: "Click the part of the page with the problem", pointCancel: "Cancel", pointed: "Pointed at", repoint: "Point again", unpoint: "Remove",
+    mark: "Mark the problem", markMore: "Mark more", markHelp: "Click a part or drag a box", markHelpTouch: "Tap a part or drag a box",
+    markFull: "Up to {n} marks", undo: "Undo", markDone: "Done", area: "Area in", removeMark: "Remove mark {n}",
     send: "Send", sending: "Sending…", sent: "Sent. Thank you!", sentRef: "Letter #{id}",
     errors: {
       empty: "Write a few words first.", offline: "Could not reach the server. Check the connection and try again.",
@@ -296,7 +330,8 @@ export const STRINGS = {
     addImage: "Thêm ảnh", paste: "hoặc dán", remove: "Xoá ảnh", screenshot: "Ảnh chụp trang này", image: "Ảnh",
     drop: "Thả ảnh vào đây để thêm", full: "Đã đủ số ảnh tối đa.",
     context: "Gửi kèm", logs: "lỗi gần đây\u00a0({n})",
-    point: "Chỉ vào chỗ có vấn đề", pointHelp: "Bấm vào chỗ có vấn đề trên trang", pointCancel: "Huỷ", pointed: "Đã chỉ vào", repoint: "Chỉ lại", unpoint: "Bỏ",
+    mark: "Đánh dấu chỗ có vấn đề", markMore: "Đánh dấu thêm", markHelp: "Bấm chọn một phần hoặc kéo để khoanh vùng", markHelpTouch: "Chạm chọn một phần hoặc kéo để khoanh vùng",
+    markFull: "Tối đa {n} dấu", undo: "Hoàn tác", markDone: "Xong", area: "Vùng trong", removeMark: "Bỏ dấu {n}",
     send: "Gửi", sending: "Đang gửi…", sent: "Đã gửi. Cảm ơn bạn!", sentRef: "Mã thư #{id}",
     errors: {
       empty: "Hãy viết vài chữ trước đã.", offline: "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.",
@@ -307,8 +342,15 @@ export const STRINGS = {
   },
 };
 
-/** data-lang, then the page's <html lang>, then the browser; Vietnamese or English. */
+/**
+ * The first of data-lang, the page's <html lang> and the browser's languages that the widget speaks (the whole tag such
+ * as `zh-tw` first, then its language such as `zh`), else English. A language it does not speak passes to the next one.
+ */
 export function pickLang(dataLang, htmlLang, navLangs = []) {
-  const l = [dataLang, htmlLang, ...navLangs].find((x) => typeof x === "string" && x.trim());
-  return l && l.trim().toLowerCase().startsWith("vi") ? "vi" : "en";
+  for (const l of [dataLang, htmlLang, ...navLangs]) {
+    if (typeof l !== "string" || !l.trim()) continue;
+    const tag = l.trim().toLowerCase().replace(/_/g, "-");
+    for (const k of [tag, tag.split("-")[0]]) if (Object.hasOwn(STRINGS, k)) return k; // hasOwn: "constructor" is no language
+  }
+  return "en";
 }

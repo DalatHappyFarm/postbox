@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { stripJpeg } from "./jpeg.ts";
 import { readLimits, type Limits } from "./limits.ts";
-import { cleanElement, cleanLogs } from "./context.ts";
+import { cleanLogs, cleanMarks, noteText, oneLine } from "./context.ts";
 import { notifyNewLetter } from "./notify.ts";
 import { connectTelegram, telegramUpdate } from "./telegram.ts";
 import { MAX_ORIGINS, normalizeOrigin, originAllowed } from "./origins.ts";
@@ -25,6 +25,7 @@ const SOURCES = ["app", "web"];
 const LABEL = /^[a-z0-9-]{1,32}$/;
 const PLATFORMS = ["ios", "android", "web"];
 const BODY_SLACK = 64 * 1024; // meta fields and multipart framing on top of the images
+const MAX_META = 256 * 1024; // a full meta (note, 20 logs, 9 marks) is well under this; parsed only below it
 const IMAGE_TYPES = ["image/jpeg", "image/png"];
 
 const CORS = {
@@ -34,8 +35,10 @@ const CORS = {
   "access-control-max-age": "86400",
 };
 
+// public/_headers does not reach responses built here, so every JSON answer carries its own.
+const JSON_HEADERS = { "content-type": "application/json", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; frame-ancestors 'none'" };
 const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", ...headers } });
+  new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...headers } });
 const fail = (status: number, error: string, headers: HeadersInit = {}) => json({ error }, status, headers);
 
 
@@ -91,7 +94,7 @@ export async function handle(req: Request, env: Env, sql: Sql, deps: Deps = DEFA
 }
 
 const str = (v: unknown, max: number): string | null | undefined =>
-  v === undefined || v === null ? null : typeof v === "string" && v.length <= max ? v : undefined;
+  v === undefined || v === null ? null : typeof v === "string" && v.length <= max ? oneLine(v) : undefined;
 
 const sniff = (b: Uint8Array): { ext: string; mime: string } | null =>
   b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? { ext: "jpg", mime: "image/jpeg" }
@@ -128,12 +131,14 @@ async function submit(req: Request, env: Env, sql: Sql, L: Limits, deps: Deps): 
   // ponytail: plain sha-256 of ip + device id, no secret salt; the hash only groups submits, add a salt if it is ever shown to anyone.
   // The device id comes from a header so the check needs no body; without it the limit is per ip.
   const reporter = hex(await sha256(`${ip}|${(req.headers.get("x-device-id") ?? "").slice(0, 200)}`));
-  const [{ per_device }] = await sql`select count(*)::int as per_device from submit_log where reporter_hash = ${reporter} and created_at > now() - interval '1 hour'`;
-  const [{ per_project }] = await sql`select count(*)::int as per_project from submit_log where project_id = ${project.id} and created_at > now() - interval '1 hour'`;
-  if (per_device >= L.RATE_PER_DEVICE_HOUR || per_project >= L.RATE_PER_PROJECT_HOUR) return bad(429, "rate limit exceeded");
+  const ipHash = hex(await sha256(ip));
+  const [n] = await sql`select count(*) filter (where reporter_hash = ${reporter})::int as device, count(*) filter (where ip_hash = ${ipHash})::int as ip,
+      count(*) filter (where project_id = ${project.id})::int as project
+    from submit_log where created_at > now() - interval '1 hour' and (reporter_hash = ${reporter} or ip_hash = ${ipHash} or project_id = ${project.id})`;
+  if (n.device >= L.RATE_PER_DEVICE_HOUR || n.ip >= L.RATE_PER_IP_HOUR || n.project >= L.RATE_PER_PROJECT_HOUR) return bad(429, "rate limit exceeded");
   // ponytail: count-then-insert is not atomic, so a burst can overshoot the limit slightly; fine for a single-owner test tool.
   // Logged before the body is read, so malformed floods count too.
-  await sql`insert into submit_log (project_id, reporter_hash) values (${project.id}, ${reporter})`;
+  await sql`insert into submit_log (project_id, reporter_hash, ip_hash) values (${project.id}, ${reporter}, ${ipHash})`;
 
   const p = await parseLetter(req, env, L, bad);
   if (p instanceof Response) return p;
@@ -175,6 +180,7 @@ async function parseLetter(req: Request, env: Env, L: Limits, bad: (status: numb
     }
     const meta = form.get("meta");
     if (typeof meta !== "string") return bad(400, "meta is required");
+    if (meta.length > MAX_META) return bad(413, "meta too large");
     try {
       b = JSON.parse(meta);
     } catch {
@@ -200,7 +206,7 @@ async function parseLetter(req: Request, env: Env, L: Limits, bad: (status: numb
   }
   if (!b || typeof b !== "object" || Array.isArray(b)) return bad(400, "invalid json");
 
-  const text = typeof b.text === "string" ? b.text.trim() : "";
+  const text = typeof b.text === "string" ? noteText(b.text).trim() : "";
   if (!text) return bad(400, "text is required");
   if (text.length > L.MAX_TEXT) return bad(413, "text too long");
   const kind = b.kind ?? "other";
@@ -246,7 +252,7 @@ async function parseLetter(req: Request, env: Env, L: Limits, bad: (status: numb
   }
   if (imgs.length && !env.SHOTS) return bad(500, "misconfigured");
   f.logs = cleanLogs(b.logs);
-  f.element = cleanElement(b.element);
+  f.marks = cleanMarks(b.marks, b.element);
   return { b, text, kind, f, imgs, thumb };
 }
 
@@ -254,9 +260,9 @@ async function parseLetter(req: Request, env: Env, L: Limits, bad: (status: numb
 async function saveLetter(env: Env, sql: Sql, project: Row, p: Letter, source: "app" | "web", reporter: string | null): Promise<number | null> {
   const { b, text, kind, f, imgs, thumb } = p;
   const [row] = await sql`
-    insert into feedback (project_id, kind, text, screen, app_version, build, platform, device, os, locale, url, reporter_hash, source, logs, element)
+    insert into feedback (project_id, kind, text, screen, app_version, build, platform, device, os, locale, url, reporter_hash, source, logs, marks)
     values (${project.id}, ${kind}, ${text}, ${f.screen}, ${f.app_version}, ${f.build}, ${b.platform ?? null}, ${f.device}, ${f.os}, ${f.locale}, ${f.url}, ${reporter}, ${source},
-      ${f.logs ? JSON.stringify(f.logs) : null}::jsonb, ${f.element ? JSON.stringify(f.element) : null}::jsonb)
+      ${f.logs ? JSON.stringify(f.logs) : null}::jsonb, ${f.marks ? JSON.stringify(f.marks) : null}::jsonb)
     returning id::int as id`;
 
   if (imgs.length) {
@@ -362,7 +368,8 @@ async function list(url: URL, sql: Sql) {
 }
 
 async function fetchOne(id: number, sql: Sql) {
-  const [row] = await sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.agent_note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at, f.logs, f.element,
+  const [row] = await sql`select f.id::int as id, p.slug as project, f.kind, f.text, f.status, f.note, f.agent_note, f.priority::int as priority, f.labels, f.duplicate_of::int as duplicate_of, f.source, f.screen, f.app_version, f.build, f.platform, f.device, f.os, f.locale, f.url, f.attachment_count::int as attachment_count, (f.thumb_key is not null) as has_thumb, f.created_at, f.updated_at, f.logs,
+    coalesce(f.marks, case when f.element is not null then jsonb_build_array(f.element || '{"type": "element"}') end) as marks,
     coalesce((select json_agg(json_build_object('position', a.position, 'kind', a.kind, 'bytes', a.bytes, 'content_type', a.content_type) order by a.position) from attachments a where a.feedback_id = f.id), '[]'::json) as attachments,
     coalesce((select json_agg(json_build_object('id', d.id::int, 'text', left(split_part(d.text, E'\n', 1), 200), 'attachment_count', d.attachment_count::int) order by d.id) from feedback d where d.duplicate_of = f.id), '[]'::json) as duplicates
     from feedback f join projects p on p.id = f.project_id where f.id = ${id}`;

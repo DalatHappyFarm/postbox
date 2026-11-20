@@ -4,7 +4,7 @@ Goal: a tester on any website the owner builds sends a note with a screenshot of
 Installing it on a new site takes one command and one pasted line.
 
 This is slice 1.
-Slice 2 adds pointing at an element, console errors and failed requests in the brief, and allowed origins per mailbox.
+Slice 2 adds pointing at an element (since 2026-11-20 marking several elements and areas, section 5b), console errors and failed requests in the brief, and allowed origins per mailbox.
 Allowed origins shipped first (2026-11-12, migration `0005_allowed_origins.sql`), see section 1; the other two follow the same day (migration `0007_page_context.sql`), see section 5b.
 
 ## 1. Install
@@ -42,7 +42,8 @@ Allowed origins shipped first (2026-11-12, migration `0005_allowed_origins.sql`)
 - The form: kind (Bug preselected, or the kind passed to `open`), the note (autofocus, Ctrl or Cmd+Enter sends), the screenshot preview with "Include screenshot", image tiles with remove, "Add image" (picker) and paste or drop anywhere in the panel, a line saying what is sent along (screen, browser, viewport), the error line, one primary Send button.
 - Limits come from `GET /api/limits` once per page; the screenshot counts as one of `max_attachments`; every image is re-encoded to JPEG 0.7 at most 1600 px on a white background (so transparent PNGs do not turn black), with a 320 px thumbnail of the first image, as in the kit.
 - The note and kind are kept as a draft per key until a send succeeds; a failed send keeps everything and says why (offline, rate limit, set-up, too large, bad image, server).
-- Language: `data-lang`, else `<html lang>`, else the browser; Vietnamese or English.
+- Language: the first of `data-lang`, `<html lang>` and the browser's languages that the widget speaks (the whole tag such as `zh-tw` first, then its language), else English; Vietnamese and English so far, and adding one is one more entry in `STRINGS`.
+  It is picked again each time the panel opens, so a site that switches language without a reload is followed, and the widget's host gets the `lang` attribute, so screen readers read the panel in its own language.
 - Theme: `data-theme`, else light or dark from the page's own background color, so the panel matches the site rather than the OS.
 - Phone width (520 px and below): a bottom sheet with the safe-area insets.
 
@@ -79,16 +80,30 @@ The point is that an agent fixing a web letter cannot open the tester's console 
 - Sent as `meta.logs`, `[{kind, message, source?, method?, url?, status?, seconds_before}]` with `kind` one of `error`, `rejection`, `console`, `resource`, `request` and `status` 0 for no answer; seconds before sending, so the tester's clock never matters.
 - The panel says so in "Sent along" (`recent errors (6)`), and the consent text names the page's recent errors; the consent key moved to `v2`, so testers are asked once more.
 
-**Point at the problem.**
-- "Point at the problem" under the screenshot closes the panel (its state stays) and shows a bar at the top: "Click the part of the page with the problem", with Cancel; Esc cancels too.
-- Moving the pointer outlines the element under it in red with a short name (`button.pay`, `#cart`); a click or tap picks it, Enter picks the outlined one.
-- While pointing, presses on the page reach nothing there (no link opens, no form submits, no menu closes); touch is only stopped, not cancelled, so the page still scrolls and a tap still picks.
-- The panel comes back with the note as it was, a new screenshot with a red frame around the element, and "Pointed at button.pay "Pay"" with "Point again" and "Remove" (which takes a plain screenshot again).
-- Sent as `meta.element`: `selector` (tag names with `:nth-of-type`, from the nearest hand-written id, as short as stays unique; generated ids such as React's `:r1:` are skipped), `html` (the opening tag with `id`, `class`, `name`, `type`, `role`, `aria-label`, `title`, `alt`, `placeholder`, a cleaned `href` and `data-testid`, never a value) and `text` (its visible text, 120 characters, left out for form fields and masked parts).
+**Mark the problem (2026-11-20, replaces "Point at the problem").**
+- One mode, two gestures: a click (or tap) marks the element under it, a drag of more than 10 px draws a box around an area; the tester can mark up to 9 parts in one go, each numbered in the order it was made.
+- An area is for what is not one element: a gap, a crooked row, text spilling out, an embedded map, payment form or video, a canvas chart.
+- "Mark the problem" under the screenshot closes the panel (its state stays) and covers the page with a layer and a bar at the top: "Click a part or drag a box" ("Tap ..." on touch screens), Undo and Done.
+- Moving the pointer outlines the element under it with a short name (`button.pay`, `#cart`); a marked element gets a red frame with 4 px of room, an area a dashed one, and each a numbered red circle at the first corner that no earlier number covers.
+- Clicking a marked element again unmarks it, pressing a number removes its mark, Undo (or Cmd or Ctrl+Z, Backspace) removes the last one; a 10th mark is refused with "Up to 9 marks"; Esc and Done both keep the marks and bring the panel back.
+- The layer takes every press, so nothing on the page opens, submits or closes; it also holds the page still (wheel, scroll keys and one-finger touch moves are cancelled, and any other scroll is undone), so a phone draws with one finger and two fingers still pinch-zoom.
+- The page holds the place where the screenshot was taken (the scroll position from the moment the button was pressed is restored first), because the marks are drawn on that screenshot rather than on a new one: a toast or an error message that has gone by the time the tester is done is still in the picture, and marking costs no capture wait.
+- Keys while marking reach none of the page's own listeners; focus starts on Done and Tab stays in the bar.
+- The panel lists the marks ("1 button.pay "Pay"", "2 Area in div.cart") with a remove button each, under "Mark more"; a click on the scrim no longer closes the panel while it holds marks or images (the close button and Esc still do).
+- A masked part never reaches a mark: an element inside one (also across the shadow roots of the page's components) or one that contains one sends no text, and a masked element sends only its `id` and `class`.
+- If the page removes the widget while the tester is marking, the next key or scroll gives the page its keys and scrolling back.
+- Sent as `meta.marks`, `[{type, selector, html?, text?, rect}]` in the order of their numbers: `type` is `element` or `area`; `selector` is tag names with `:nth-of-type`, from the nearest hand-written id, as short as stays unique (generated ids such as React's `:r1:` are skipped), and inside a page component's open shadow root the host's selector, `>>>`, then the one inside it; for an area it names the smallest element around the box; `html` is the opening tag with `id`, `class`, `name`, `type`, `role`, `aria-label`, `title`, `alt`, `placeholder`, a cleaned `href` and `data-testid`, never a value; `text` is an element's visible text, 120 characters, left out for areas, form fields and masked parts; `rect` is `{x, y, w, h}` in viewport pixels.
+- Limit of the method: a page's own native modal `<dialog>` sits in the top layer above the marking layer and makes the rest of the page inert, so marking does not work while one is open (portal-based dialogs such as Radix and MUI are fine).
 
 **Server, dashboard, CLI.**
-- `lib/context.ts` keeps only valid entries and cuts every string; a bad value is dropped, never a reason to refuse the letter. Stored as `feedback.logs` and `feedback.element` (jsonb, size-checked); returned on the letter (`GET /api/feedback/:id`), not in lists.
-- The dashboard shows "Pointed at" in the context table and "Page errors and failed requests (n)" under it (open when there are five or fewer); the copied brief and the CLI brief carry `element`, `element tag`, `element text` and a "Page errors and failed requests" section, one line per entry.
+- `lib/context.ts` keeps only valid entries and cuts every string; a bad value is dropped, never a reason to refuse the letter.
+- Every stored one-line value (meta fields, logs, marks) has its control characters and line breaks turned into spaces and any half of a surrogate pair (a cut through an emoji) turned into U+FFFD; the note keeps tabs and line breaks only.
+  Postgres refuses NUL and half pairs in json and text, which lost such letters with a 500, and a line break in a one-line value could forge a heading in a brief.
+  That also caps a stored character at 3 bytes, so nine marks at their longest (33,525 bytes) fit their column check and 20 logs at their longest (68,540 bytes) fit theirs (raised to 80,000 by `0010_logs_size.sql`; 20,000 refused real letters).
+- `meta` above 256 KB is refused with 413 before it is parsed.
+- Stored as `feedback.logs` and `feedback.marks` (jsonb, size-checked, migration `0009_marks.sql`); returned on the letter (`GET /api/feedback/:id`), not in lists.
+- The single `meta.element` of widgets cached before marks arrives as the first mark, and letters stored with `feedback.element` are read as one mark; the old column is no longer written and can be dropped once copied.
+- The dashboard shows "Marked" in the context table, one numbered row per mark, and "Page errors and failed requests (n)" under it (open when there are five or fewer); the copied brief and the CLI brief carry the note in a code fence longer than any backtick run in it (so no line of it can start a section the agent would take for the owner's), every tester value on its own line, a "Marked on the page (n)" section after the text, one numbered line per mark with its selector and tag in code spans, and a "Page errors and failed requests" section, one line per entry.
 
 ## 6. Robustness on someone else's page
 
@@ -109,6 +124,6 @@ The point is that an agent fixing a web letter cannot open the tester's console 
 
 ## 8. Checks
 
-- `test/widget.test.ts`: hosts, tester mode (on, off, unset), button position (drag threshold, docking, stored place), address cleaning, screen names, user agents, meta limits, error messages, both languages complete, limits and timeouts.
+- `test/widget.test.ts`: hosts, tester mode (on, off, unset), button position (drag threshold, docking, stored place), address cleaning, screen names, user agents, meta limits, error messages, every language complete (each string present and not empty, each `{n}` kept), the language pick, mark frames and numbers, limits and timeouts.
 - The dashboard itself as a heavy page (about 1300 elements, `img-src 'self' blob:`): the probe reports the capture as impossible in about 0.1 s; before the probe, the capture took about 0.7 s and came back blank.
 - End to end, against `wrangler pages dev` and a site on another origin with `default-src 'self'` and `style-src 'self'`: sticky header, fixed chat button, inner scroll box, password and card fields, a masked paragraph, a hostile `div` rule, `oklch()` colors; consent, draft, the site's own `data-postbox-open` link, images by picker and paste, the image limit, every error path, phone width, a dark page, keyboard focus, a production host with and without tester mode over plain http, and the letters in the dashboard.

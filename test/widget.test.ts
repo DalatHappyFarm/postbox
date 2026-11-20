@@ -1,5 +1,7 @@
 import { describe as group, expect, it } from "vitest";
-import { buildMeta, cleanUrl, cssPath, DEFAULT_LIMITS, describe, errorKey, errText, logsForSend, openingTag, pushLog, shortName, FAB_REST, initialFab, isDrag, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, snapFab, STRINGS, testerFlag } from "../public/widget/lib.js";
+import { boxBetween, buildMeta, cleanUrl, cssPath, frameOf, holds, MAX_MARKS, placeBadges, DEFAULT_LIMITS, describe, errorKey, errText, logsForSend, openingTag, pushLog, shortName, FAB_REST, initialFab, isDrag, isStagingHost, normalizeScreen, pickLang, readLimits, resizeDims, sendTimeout, showButton, slotsLeft, snapFab, STRINGS, testerFlag } from "../public/widget/lib.js";
+
+const LANGS = Object.keys(STRINGS) as (keyof typeof STRINGS)[];
 
 const UA = {
   macChrome: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -111,14 +113,39 @@ group("web widget helpers", () => {
   it("maps failed sends to a message", () => {
     expect([errorKey(0, ""), errorKey(429, "rate limit exceeded"), errorKey(401, "invalid project key"), errorKey(403, "origin not allowed"), errorKey(413, "images too large together"), errorKey(413, "text too long"), errorKey(415, "invalid jpeg"), errorKey(400, "text is required"), errorKey(500, "x"), errorKey(400, "invalid kind")])
       .toEqual(["offline", "rate", "setup", "setup", "tooLarge", "textLong", "badImage", "empty", "server", "server"]);
-    for (const lang of ["en", "vi"] as const) expect(STRINGS[lang].sentRef).toContain("#{id}");
-    for (const lang of ["en", "vi"] as const) for (const k of ["offline", "rate", "setup", "tooLarge", "textLong", "badImage", "empty", "server"]) expect(STRINGS[lang].errors[k as keyof typeof STRINGS.en.errors], `${lang}.${k}`).toBeTruthy();
+    for (const lang of LANGS) expect(STRINGS[lang].sentRef).toContain("#{id}");
+    for (const lang of LANGS) for (const k of ["offline", "rate", "setup", "tooLarge", "textLong", "badImage", "empty", "server"]) expect(STRINGS[lang].errors[k as keyof typeof STRINGS.en.errors], `${lang}.${k}`).toBeTruthy();
   });
 
-  it("keeps both languages complete and picks one from data-lang, the page or the browser", () => {
+  it("keeps every language complete and picks the first one it speaks from data-lang, the page or the browser", () => {
     const keys = (o: object): string[] => Object.entries(o).flatMap(([k, v]) => (v && typeof v === "object" ? keys(v).map((x) => `${k}.${x}`) : [k]));
-    expect(keys(STRINGS.vi).sort()).toEqual(keys(STRINGS.en).sort());
+    for (const lang of LANGS) {
+      expect(keys(STRINGS[lang]).sort(), lang).toEqual(keys(STRINGS.en).sort());
+      for (const k of keys(STRINGS[lang])) expect(k.split(".").reduce((o: any, x) => o[x], STRINGS[lang]), `${lang}.${k}`).toMatch(/\S/);
+      for (const k of ["logs", "markFull", "removeMark"] as const) expect(STRINGS[lang][k], `${lang}.${k}`).toContain("{n}");
+    }
     expect([pickLang("vi", "en"), pickLang(undefined, "vi-VN"), pickLang("", "", ["vi", "en"]), pickLang(undefined, "en", ["vi"]), pickLang(undefined, undefined, [])]).toEqual(["vi", "vi", "vi", "en", "en"]);
+    // A language it does not speak passes to the next one; region tags and underscores match their language.
+    expect([pickLang(undefined, "fr", ["vi-VN"]), pickLang("de", "ja", ["ko", "en-GB"]), pickLang(" VI_vn "), pickLang("constructor", "__proto__", ["toString"])]).toEqual(["vi", "en", "vi", "en"]);
+  });
+
+  it("frames marks and keeps their numbers on screen", () => {
+    expect(boxBetween(120.4, 80, 20, 200.6)).toEqual({ x: 20, y: 80, w: 100, h: 121 });
+    const rect = { x: 10, y: 20, w: 100, h: 40 };
+    expect(frameOf({ type: "element", rect })).toEqual({ x: 6, y: 16, w: 108, h: 48 });
+    expect(frameOf({ type: "area", rect })).toEqual(rect);
+    const one = (f: { x: number; y: number; w: number; h: number }) => placeBadges([f], 400, 300)[0];
+    expect(one({ x: 100, y: 100, w: 50, h: 50 })).toEqual({ x: 89, y: 89 }); // centred on the top-left corner
+    expect(one({ x: -40, y: -10, w: 900, h: 900 })).toEqual({ x: 2, y: 2 }); // a box larger than the screen
+    expect(one({ x: 395, y: 298, w: 4, h: 4 })).toEqual({ x: 376, y: 276 }); // the corner off the bottom right
+    // Frames that start at about the same corner: the later number moves to its next free corner.
+    expect(placeBadges([{ x: 100, y: 100, w: 50, h: 50 }, { x: 104, y: 96, w: 200, h: 30 }], 400, 300)).toEqual([{ x: 89, y: 89 }, { x: 293, y: 85 }]);
+    // Same frame twice over: top-right, bottom-left, bottom-right, then along the top edge.
+    const same = Array.from({ length: 5 }, () => ({ x: 100, y: 100, w: 100, h: 100 }));
+    expect(placeBadges(same, 400, 300)).toEqual([{ x: 89, y: 89 }, { x: 189, y: 89 }, { x: 89, y: 189 }, { x: 189, y: 189 }, { x: 113, y: 89 }]);
+    const r = { left: 10, top: 10, right: 210, bottom: 110 };
+    expect([holds(r, { x: 10, y: 10, w: 200, h: 100 }), holds(r, { x: 9.5, y: 50, w: 20, h: 20 }), holds(r, { x: 50, y: 50, w: 200, h: 10 })]).toEqual([true, true, false]);
+    expect(MAX_MARKS).toBe(9);
   });
 
   it("follows the server limits, slots and send timeout like the React Native kit", () => {

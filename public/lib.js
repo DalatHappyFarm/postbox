@@ -84,7 +84,7 @@ export function wideShot(i) {
 
 /**
  * The context of a letter in at most five rows: where (the page, or the app screen), on what (device, OS, language),
- * which build, when, and the element the tester pointed at. The copied brief keeps every field for the agent.
+ * which build and when. The copied brief keeps every field for the agent.
  */
 export function contextRows(i, now = Date.now()) {
   const rows = [];
@@ -273,9 +273,19 @@ export const widgetSnippet = (origin, key) => `<script src="${origin}/widget.js"
 /** "1.2 (34)" with both, otherwise whichever is set (web letters often have only a build). Same rule as the CLI brief. */
 export const buildLabel = (i) => (i.app_version && i.build ? `${i.app_version} (${i.build})` : i.app_version || i.build || "");
 
+/** A tester's value on one line: a line break in it could start a heading that the agent takes for the owner's. */
+export const line = (v) => String(v).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
+const code = (s) => (s.includes("`") ? `\`\` ${s} \`\`` : `\`${s}\``);
+/** The tester's note in a fence longer than any backtick run in it, so none of its lines can start a section. */
+export function fenced(text) {
+  const s = String(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+  const f = "`".repeat(Math.max(3, ...[...s.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+  return [f, s, f];
+}
+
 /** Same markdown as `postbox show` (packages/cli/src/index.ts), plus the decision; the photos are named, the CLI downloads them. */
 export function brief(i) {
-  const row = (k, v) => (v == null || v === "" || (Array.isArray(v) && !v.length) ? [] : [`- ${k}: ${Array.isArray(v) ? v.join(", ") : v}`]);
+  const row = (k, v) => (v == null || v === "" || (Array.isArray(v) && !v.length) ? [] : [`- ${k}: ${line(Array.isArray(v) ? v.join(", ") : v)}`]);
   return [
     `# Feedback #${i.id}`,
     "",
@@ -285,16 +295,16 @@ export function brief(i) {
     ...row("build", buildLabel(i)),
     ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("locale", i.locale), ...row("url", i.url),
     ...row("created", i.created_at),
-    ...row("element", i.element?.selector), ...row("element tag", i.element?.html), ...row("element text", i.element?.text),
     ...(i.attachment_count ? [`Photos: ${i.attachment_count}, run postbox show ${i.id} to download them`] : []),
     "",
     "## Text",
     "",
-    i.text,
+    ...fenced(i.text),
+    ...(i.marks?.length ? ["", `## Marked on the page (${i.marks.length})`, "", "Numbered like the red frames on the screenshot; boxes are in viewport pixels.", "", ...i.marks.map(markLine)] : []),
     ...(i.note ? ["", "## Decision for the agent", "", i.note] : []),
     ...(i.agent_note ? ["", "## Agent's note", "", i.agent_note] : []),
     ...(i.logs?.length ? ["", `## Page errors and failed requests (${i.logs.length})`, "", ...i.logs.map((e) => `- ${logLine(e)}`)] : []),
-    ...(i.duplicates?.length ? ["", "## Duplicates folded in", "", ...i.duplicates.map((d) => `- #${d.id}: ${d.text}`)] : []),
+    ...(i.duplicates?.length ? ["", "## Duplicates folded in", "", ...i.duplicates.map((d) => `- #${d.id}: ${line(d.text)}`)] : []),
   ].join("\n");
 }
 
@@ -305,7 +315,14 @@ export function logWhat(e) {
     : e.kind === "resource" ? `${e.message}${e.url ? `: ${e.url}` : ""}`
     : `${e.message}${e.source ? ` at ${e.source}` : ""}`;
 }
-export const logLine = (e) => `${e.seconds_before} s before sending, ${e.kind}: ${logWhat(e)}`;
+export const logLine = (e) => line(`${e.seconds_before} s before sending, ${e.kind}: ${logWhat(e)}`);
+
+/** One line per part of the page the tester marked, numbered like its frame on the screenshot. Same as the CLI brief. */
+export function markLine(m, n) {
+  const box = m.rect ? `${m.rect.w}x${m.rect.h} at ${m.rect.x},${m.rect.y}` : "";
+  const what = [code(line(m.selector)), m.html ? code(line(m.html)) : "", m.text ? `"${line(m.text)}"` : ""].filter(Boolean).join(" ");
+  return m.type === "area" ? `${n + 1}. area${box ? ` ${box}` : ""}, inside ${what}` : `${n + 1}. ${what}${box ? ` (${box})` : ""}`;
+}
 
 /** One Markdown document for several letters, in the given order. */
 export function briefMany(items) {

@@ -41,7 +41,7 @@ describe("postbox", () => {
     expect(h.out[0]).toBe(
       ["# Feedback #42", "", "- mailbox: demo", "- kind: bug", "- status: new", "- screen: Settings", "- build: 1.2.0 (77)",
         "- platform: ios", "- device: iPhone 15", "- os: iOS 19", "- created: 2026-10-16T10:00:00Z", ...paths.map((p, n) => `- image ${n + 1}: ${p}`),
-        "", "## Text", "", "Save button does nothing"].join("\n"));
+        "", "## Text", "", "```", "Save button does nothing", "```"].join("\n"));
     expect(h.calls.map((c) => c.url).sort()).toEqual(["", "/0", "/1", "/2"].map((x) => (x ? `https://hub.test/api/feedback/42/attachments${x}` : "https://hub.test/api/feedback/42")).sort());
     expect((h.calls[0].init.headers as Record<string, string>).authorization).toBe("Bearer tok");
   });
@@ -169,10 +169,10 @@ describe("postbox", () => {
       "# Feedback #42", "", "- mailbox: demo", "- kind: bug", "- priority: 1 (high)", "- labels: ui, perf", "- status: ready", "- screen: Settings", "- build: 1.2.0 (77)",
       "- platform: ios", "- device: iPhone 15", "- os: iOS 19", "- locale: en-US", "- source: web", "- created: 2026-10-16T10:00:00Z",
       `- image 1: ${p(42, 0, "png")}`, `- image 2: ${p(42, 1, "jpg")}`, `- image 3: ${p(42, 2, "jpg")}`,
-      "", "## Text", "", "Save button does nothing", "", "## Decision for the agent", "", "Make it save; acceptance: toast shows",
+      "", "## Text", "", "```", "Save button does nothing", "```", "", "## Decision for the agent", "", "Make it save; acceptance: toast shows",
       "", "## Duplicates (1)", "", "More reports of the same problem; read them as extra evidence.", "",
       "### Duplicate #43", "", "- mailbox: demo", "- kind: bug", "- status: duplicate", "- screen: Settings", "- build: 1.2.0 (77)", "- platform: ios", "- device: iPhone 15", "- os: iOS 19",
-      "- created: 2026-10-16T10:00:00Z", `- image 1: ${p(43, 0, "jpg")}`, "", "## Text", "", "same bug, with photo",
+      "- created: 2026-10-16T10:00:00Z", `- image 1: ${p(43, 0, "jpg")}`, "", "## Text", "", "```", "same bug, with photo", "```",
     ].join("\n"));
     expect(calls.filter((c) => c.includes("/43")).length).toBe(2); // detail + its one photo
   });
@@ -229,16 +229,27 @@ describe("postbox", () => {
     expect(JSON.parse(back?.init.body as string)).toEqual({ status: "ready" });
   });
 
-  it("the brief names the pointed element and lists the page's errors and failed requests", async () => {
+  it("never writes a tester's escape codes to the terminal (clipboard writes, hidden text)", async () => {
+    const evil = { ...item, text: "\u001b]52;c;Y3VybA==\u0007Checkout\u001b[2K broken\u009b", screen: "/x\u001b[8m" };
+    const list = harness(() => Response.json({ items: [evil] }));
+    await run(["list"], list.d);
+    const show = harness(() => Response.json({ ...evil, attachments: [] }));
+    await run(["show", "42"], show.d);
+    for (const out of [list.out[0], show.out[0]]) expect(out).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/);
+    expect(show.out[0]).toContain("```\n]52;c;Y3VybA==Checkout[2K broken\n```");
+  });
+
+  it("the brief lists the marked parts of the page and the page's errors and failed requests", async () => {
     const logs = [
       { kind: "error", message: "TypeError: cart is undefined", source: "https://shop.test/app.js:12:5", seconds_before: 8 },
       { kind: "request", message: "Internal Server Error", method: "POST", url: "https://shop.test/api/cart", status: 500, seconds_before: 3 },
       { kind: "request", message: "TypeError: Failed to fetch", method: "GET", url: "https://cdn.test/x.json", status: 0, seconds_before: 2 },
       { kind: "resource", message: "<img> did not load", url: "https://shop.test/hero.jpg", seconds_before: 1 },
     ];
-    const h = harness(() => Response.json({ ...item, attachments: [], logs, element: { selector: "#pay", html: '<button id="pay">', text: "Pay" } }));
+    const h = harness(() => Response.json({ ...item, attachments: [], logs, marks: [{ type: "element", selector: "#pay", html: '<button id="pay">', text: "Pay", rect: { x: 16, y: 540, w: 120, h: 40 } }, { type: "area", selector: "div.cart", html: '<div class="cart">', rect: { x: 0, y: 600, w: 360, h: 48 } }, { type: "element", selector: "main" }] }));
     await run(["show", "42"], h.d);
-    expect(h.out[0]).toContain('- element: #pay\n- element tag: <button id="pay">\n- element text: Pay');
+    expect(h.out[0]).toContain(["## Text", "", "```", item.text, "```", "", "## Marked on the page (3)", "", "Numbered like the red frames on the screenshot; boxes are in viewport pixels.", "",
+      '1. `#pay` `<button id="pay">` "Pay" (120x40 at 16,540)', '2. area 360x48 at 0,600, inside `div.cart` `<div class="cart">`', "3. `main`"].join("\n"));
     expect(h.out[0]).toContain(["## Page errors and failed requests (4)", "",
       "- 8 s before sending, error: TypeError: cart is undefined at https://shop.test/app.js:12:5",
       "- 3 s before sending, request: POST https://shop.test/api/cart: 500 Internal Server Error",

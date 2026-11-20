@@ -86,10 +86,30 @@ export type Item = {
   screen: string | null; build: string | null; app_version: string | null; platform: string | null;
   device: string | null; os: string | null; locale?: string | null; url: string | null; created_at: string;
   attachment_count?: number; attachments?: Attachment[]; duplicates?: { id: number; text: string }[];
-  /** Web widget: the page's recent errors and failed requests, and the element the tester pointed at (detail only). */
-  logs?: Log[] | null; element?: { selector: string; html?: string; text?: string } | null;
+  /** Web widget: the page's recent errors and failed requests, and the parts of the page the tester marked (detail only). */
+  logs?: Log[] | null; marks?: Mark[] | null;
 };
 export type Log = { kind: string; message: string; source?: string; method?: string; url?: string; status?: number; seconds_before: number };
+export type Mark = { type: "element" | "area"; selector: string; html?: string; text?: string; rect?: { x: number; y: number; w: number; h: number } };
+
+/** A tester's value on one line: a line break in it could start a heading that the agent takes for the owner's. */
+export const line = (v: unknown) => String(v).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
+const code = (s: string) => (s.includes("`") ? `\`\` ${s} \`\`` : `\`${s}\``);
+/** Multi-line text with only tabs and line breaks left: escape codes would reach the owner's terminal (clipboard writes, hidden text). */
+const term = (s: string) => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+/** The tester's note in a fence longer than any backtick run in it, so none of its lines can start a section. */
+export function fenced(text: string): string[] {
+  const s = term(text);
+  const f = "`".repeat(Math.max(3, ...[...s.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+  return [f, s, f];
+}
+
+/** One line per part of the page the tester marked, numbered like its frame on the screenshot: "2. area 360x48 at 0,600, inside `div.cart`". */
+export function markLine(m: Mark, n: number): string {
+  const box = m.rect ? `${m.rect.w}x${m.rect.h} at ${m.rect.x},${m.rect.y}` : "";
+  const what = [code(line(m.selector)), m.html ? code(line(m.html)) : "", m.text ? `"${line(m.text)}"` : ""].filter(Boolean).join(" ");
+  return m.type === "area" ? `${n + 1}. area${box ? ` ${box}` : ""}, inside ${what}` : `${n + 1}. ${what}${box ? ` (${box})` : ""}`;
+}
 
 /** One line per entry: "3 s before sending, request: GET https://shop.test/api/cart: 500 Internal Server Error". */
 export function logLine(e: Log): string {
@@ -97,7 +117,7 @@ export function logLine(e: Log): string {
     ? `${e.method || "GET"} ${e.url || ""}: ${e.status ? `${e.status}${e.message ? ` ${e.message}` : ""}` : `no answer${e.message ? ` (${e.message})` : ""}`}`
     : e.kind === "resource" ? `${e.message}${e.url ? `: ${e.url}` : ""}`
     : `${e.message}${e.source ? ` at ${e.source}` : ""}`;
-  return `${e.seconds_before} s before sending, ${e.kind}: ${what}`;
+  return line(`${e.seconds_before} s before sending, ${e.kind}: ${what}`);
 }
 /** Downloaded image paths in display order, and the positions whose image is gone (R2 deletes images after 90 days). */
 type Photos = { photos: string[]; missing_photos: number[] };
@@ -105,7 +125,7 @@ type Photos = { photos: string[]; missing_photos: number[] };
 export type Brief = Omit<Item, "duplicates"> & Photos & { duplicates: (Omit<Item, "duplicates"> & Photos)[] };
 
 const prio = (p?: number | null) => (p == null ? null : `${p} (${PRIORITY[p]})`);
-const row = (k: string, v: unknown) => (v == null || v === "" ? [] : [`- ${k}: ${v}`]);
+const row = (k: string, v: unknown) => (v == null || v === "" ? [] : [`- ${k}: ${line(v)}`]);
 
 function one(i: Omit<Item, "duplicates">, ph: Photos, heading: string): string[] {
   let k = 0; // positions run 0..n-1, so image n is either missing or the next downloaded path
@@ -117,10 +137,11 @@ function one(i: Omit<Item, "duplicates">, ph: Photos, heading: string): string[]
     ...row("screen", i.screen), ...row("build", i.app_version && i.build ? `${i.app_version} (${i.build})` : i.app_version || i.build),
     ...row("platform", i.platform), ...row("device", i.device), ...row("os", i.os), ...row("locale", i.locale), ...row("url", i.url),
     ...row("source", i.source), ...row("created", i.created_at),
-    ...row("element", i.element?.selector), ...row("element tag", i.element?.html), ...row("element text", i.element?.text), ...images,
-    "", "## Text", "", i.text,
-    ...(i.note ? ["", "## Decision for the agent", "", i.note] : []),
-    ...(i.agent_note ? ["", "## Agent's note", "", i.agent_note] : []),
+    ...images,
+    "", "## Text", "", ...fenced(i.text),
+    ...(i.marks?.length ? ["", `## Marked on the page (${i.marks.length})`, "", "Numbered like the red frames on the screenshot; boxes are in viewport pixels.", "", ...i.marks.map(markLine)] : []),
+    ...(i.note ? ["", "## Decision for the agent", "", term(i.note)] : []),
+    ...(i.agent_note ? ["", "## Agent's note", "", term(i.agent_note)] : []),
     ...(i.logs?.length ? ["", `## Page errors and failed requests (${i.logs.length})`, "", ...i.logs.map((e) => `- ${logLine(e)}`)] : []),
   ];
 }
@@ -214,8 +235,8 @@ export async function run(argv: string[], d: Deps = realDeps()): Promise<void> {
     if (values.json) return asJson(items);
     if (!items.length) return d.out(cmd === "queue" ? "queue is empty" : "no feedback");
     for (const i of items) {
-      const text = i.text.replace(/\s+/g, " ");
-      d.out([String(i.id).padStart(4), i.status.padEnd(8), (i.priority == null ? "-" : PRIORITY[i.priority]).padEnd(6), i.kind.padEnd(5), i.project.padEnd(12), (i.screen ?? "-").padEnd(14), text.length > 60 ? text.slice(0, 59) + "~" : text].join("  "));
+      const text = line(i.text).replace(/\s+/g, " ");
+      d.out([String(i.id).padStart(4), i.status.padEnd(8), (i.priority == null ? "-" : PRIORITY[i.priority]).padEnd(6), i.kind.padEnd(5), i.project.padEnd(12), line(i.screen ?? "-").padEnd(14), text.length > 60 ? text.slice(0, 59) + "~" : text].join("  "));
     }
     return;
   }
